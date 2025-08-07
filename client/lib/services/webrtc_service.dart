@@ -280,9 +280,18 @@ class WebRTCService {
       
       if (_peerId != null && onSignalGenerated != null) {
         _log('📤 SENDING OFFER TO PEER', _peerId);
+        _log('🔍 OFFER DETAILS', {
+          'type': 'offer',
+          'sdp_length': description.sdp?.length ?? 0,
+          'callback_exists': onSignalGenerated != null
+        });
         onSignalGenerated!(_peerId!, {'type': 'offer', 'sdp': description.sdp});
+        _log('✅ OFFER SIGNAL SENT SUCCESSFULLY');
       } else {
-        _log('❌ ERROR: _peerId is null or callback not set, cannot send signal');
+        _log('❌ ERROR: Cannot send offer signal', {
+          'peerId': _peerId,
+          'callback_exists': onSignalGenerated != null
+        });
       }
       
       _log('✅ createOffer COMPLETED SUCCESSFULLY');

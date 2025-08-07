@@ -145,9 +145,19 @@ class SocketService {
   void sendSignal(String to, dynamic signal) {
     _log('📤 SENDING WEBRTC SIGNAL', {
       'to': to,
-      'signalType': signal['type']
+      'signalType': signal['type'],
+      'signal_size': signal.toString().length
     });
+    
+    if (signal['type'] == 'offer') {
+      _log('📤 SENDING OFFER SIGNAL', {
+        'to': to,
+        'sdp_length': signal['sdp']?.length ?? 0
+      });
+    }
+    
     socket.emit('webrtc-signal', {'to': to, 'signal': signal});
+    _log('✅ SIGNAL EMITTED TO SERVER');
   }
 
   // Add method to check connection status
