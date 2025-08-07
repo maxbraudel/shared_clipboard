@@ -70,6 +70,14 @@ class SocketService {
         // Set a timeout to collect any device events that might come
         Future.delayed(Duration(seconds: 2), () {
           _log('⏰ DEVICE DISCOVERY TIMEOUT - checking what we learned');
+          
+          // If no devices were discovered, broadcast a "hello" message
+          // to let existing clients know we're here and ask them to respond
+          _log('📢 BROADCASTING HELLO TO DISCOVER EXISTING DEVICES');
+          socket.emit('hello-i-am-here', {
+            'deviceId': socket.id,
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          });
         });
       });
     });
@@ -109,7 +117,7 @@ class SocketService {
       
       // Check for any events that might contain device/client information
       if (event.contains('device') || event.contains('client') || event.contains('user') || 
-          event.contains('room') || event.contains('list')) {
+          event.contains('room') || event.contains('list') || event.contains('hello')) {
         _log('🔍 POTENTIAL DEVICE INFO EVENT', {'event': event, 'data': data});
         
         // Try to extract device information from any event
@@ -170,6 +178,49 @@ class SocketService {
 
     socket.on('share-available', (data) {
       _log('🚀 SHARE AVAILABLE', data);
+    });
+
+    // Handle hello messages from new clients
+    socket.on('hello-i-am-here', (data) {
+      _log('👋 RECEIVED HELLO FROM NEW CLIENT', data);
+      
+      // Respond back to let them know we exist
+      if (data is Map && data['deviceId'] != null && data['deviceId'] != socket.id) {
+        _log('👋 RESPONDING TO HELLO WITH OUR INFO');
+        socket.emit('hello-response', {
+          'deviceId': socket.id,
+          'respondingTo': data['deviceId'],
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        });
+        
+        // Also treat this as a device connection
+        if (onDeviceConnected != null) {
+          onDeviceConnected!({
+            'id': data['deviceId'],
+            'deviceId': data['deviceId'],
+            'name': 'Device ${data['deviceId']}',
+            'discoveredVia': 'hello-exchange'
+          });
+        }
+      }
+    });
+
+    // Handle responses to our hello message
+    socket.on('hello-response', (data) {
+      _log('👋 RECEIVED HELLO RESPONSE', data);
+      
+      // Add this device to our list
+      if (data is Map && data['deviceId'] != null && data['deviceId'] != socket.id) {
+        _log('👋 DISCOVERED EXISTING DEVICE VIA HELLO RESPONSE');
+        if (onDeviceConnected != null) {
+          onDeviceConnected!({
+            'id': data['deviceId'],
+            'deviceId': data['deviceId'],
+            'name': 'Device ${data['deviceId']}',
+            'discoveredVia': 'hello-response'
+          });
+        }
+      }
     });
 
     socket.onDisconnect((reason) {
