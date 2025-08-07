@@ -4,6 +4,10 @@ import 'package:shared_clipboard/services/webrtc_service.dart';
 class SocketService {
   late IO.Socket socket;
   late WebRTCService _webrtcService;
+  
+  // Callbacks for UI updates
+  Function(Map<String, dynamic> device)? onDeviceConnected;
+  Function(Map<String, dynamic> device)? onDeviceDisconnected;
 
   // Helper function for timestamped logging
   void _log(String message, [dynamic data]) {
@@ -101,10 +105,16 @@ class SocketService {
 
     socket.on('device-connected', (data) {
       _log('📱 DEVICE CONNECTED', data);
+      if (onDeviceConnected != null) {
+        onDeviceConnected!(data);
+      }
     });
 
     socket.on('device-disconnected', (data) {
       _log('📱 DEVICE DISCONNECTED', data);
+      if (onDeviceDisconnected != null) {
+        onDeviceDisconnected!(data);
+      }
     });
 
     socket.on('share-available', (data) {
