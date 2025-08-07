@@ -69,9 +69,18 @@ class SocketService {
       _log('📝 SENDING REGISTRATION');
       socket.emit('register', {});
       
-      // Request list of currently connected devices
+      // Request list of currently connected devices with multiple possible event names
       _log('📋 REQUESTING CONNECTED DEVICES LIST');
       socket.emit('get-connected-devices', {});
+      socket.emit('list-devices', {});
+      socket.emit('get-devices', {});
+      socket.emit('devices-list', {});
+      
+      // Set a timeout to handle case where server doesn't support get-connected-devices
+      Future.delayed(Duration(seconds: 2), () {
+        _log('⏰ TIMEOUT: Server may not support get-connected-devices');
+        // For now, we'll rely on device-connected events only
+      });
     });
 
     socket.on('share-request', (data) async {
@@ -148,6 +157,32 @@ class SocketService {
       }
     });
 
+    socket.on('devices-list', (data) {
+      _log('📋 RECEIVED DEVICES LIST (devices-list)', data);
+      if (onConnectedDevicesList != null) {
+        List<Map<String, dynamic>> devices = [];
+        if (data is List) {
+          devices = data.cast<Map<String, dynamic>>();
+        } else if (data is Map && data['devices'] is List) {
+          devices = (data['devices'] as List).cast<Map<String, dynamic>>();
+        }
+        onConnectedDevicesList!(devices);
+      }
+    });
+
+    socket.on('device-list', (data) {
+      _log('📋 RECEIVED DEVICE LIST (device-list)', data);
+      if (onConnectedDevicesList != null) {
+        List<Map<String, dynamic>> devices = [];
+        if (data is List) {
+          devices = data.cast<Map<String, dynamic>>();
+        } else if (data is Map && data['devices'] is List) {
+          devices = (data['devices'] as List).cast<Map<String, dynamic>>();
+        }
+        onConnectedDevicesList!(devices);
+      }
+    });
+
     socket.onDisconnect((reason) {
       _log('❌ DISCONNECTED FROM SERVER', reason);
     });
@@ -160,11 +195,12 @@ class SocketService {
       _log('🔄 ATTEMPTING RECONNECTION', 'Attempt: $attemptNumber');
     });
 
-    // Log any unhandled events
+    // Log any unhandled events - temporarily log ALL events for debugging
     socket.onAny((event, data) {
+      _log('🔍 ALL EVENTS RECEIVED', {'event': event, 'data': data});
       if (!['connect', 'disconnect', 'share-request', 'webrtc-signal', 
             'device-connected', 'device-disconnected', 'share-available', 
-            'connected-devices-list'].contains(event)) {
+            'connected-devices-list', 'devices-list', 'device-list'].contains(event)) {
         _log('🔍 UNHANDLED EVENT', {'event': event, 'data': data});
       }
     });
