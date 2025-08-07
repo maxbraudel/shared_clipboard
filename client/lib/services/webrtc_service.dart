@@ -12,6 +12,10 @@ class WebRTCService {
   bool _isResetting = false; // Prevent multiple resets
   final FileTransferService _fileTransferService = FileTransferService();
   
+  // Queue for ICE candidates received before remote description is set
+  final List<RTCIceCandidate> _pendingCandidates = [];
+  bool _remoteDescriptionSet = false;
+  
   // Callback to send signals back to socket service
   Function(String to, dynamic signal)? onSignalGenerated;
 
@@ -151,6 +155,10 @@ class WebRTCService {
     _isResetting = true;
     _log('🔄 RESETTING PEER CONNECTION FOR NEW SHARE');
     
+    // Reset candidate queue and remote description flag
+    _pendingCandidates.clear();
+    _remoteDescriptionSet = false;
+    
     try {
       // Quick synchronous cleanup first
       _forceCleanup();
@@ -208,6 +216,8 @@ class WebRTCService {
     _pendingClipboardContent = null;
     _peerId = null;
     _isInitialized = false;
+    _pendingCandidates.clear();
+    _remoteDescriptionSet = false;
   }
 
   Future<void> createOffer(String? peerId) async {
@@ -293,6 +303,11 @@ class WebRTCService {
     
     _peerId = from;
     await _peerConnection?.setRemoteDescription(RTCSessionDescription(offer['sdp'], offer['type']));
+    _remoteDescriptionSet = true;
+    
+    // Process any queued candidates
+    await _processQueuedCandidates();
+    
     RTCSessionDescription description = await _peerConnection!.createAnswer();
     await _peerConnection!.setLocalDescription(description);
     _log('📤 SENDING ANSWER');
@@ -313,6 +328,10 @@ class WebRTCService {
     
     _log('📥 HANDLING ANSWER');
     await _peerConnection?.setRemoteDescription(RTCSessionDescription(answer['sdp'], answer['type']));
+    _remoteDescriptionSet = true;
+    
+    // Process any queued candidates
+    await _processQueuedCandidates();
   }
 
   Future<void> handleCandidate(dynamic candidate) async {
@@ -325,14 +344,43 @@ class WebRTCService {
       return;
     }
     
-    _log('🧊 HANDLING ICE CANDIDATE');
-    await _peerConnection?.addCandidate(
-      RTCIceCandidate(
-        candidate['candidate'],
-        candidate['sdpMid'],
-        candidate['sdpMLineIndex'],
-      ),
+    final iceCandidate = RTCIceCandidate(
+      candidate['candidate'],
+      candidate['sdpMid'],
+      candidate['sdpMLineIndex'],
     );
+    
+    if (!_remoteDescriptionSet) {
+      _log('📦 QUEUEING ICE CANDIDATE (remote description not set yet)');
+      _pendingCandidates.add(iceCandidate);
+      return;
+    }
+    
+    _log('🧊 HANDLING ICE CANDIDATE');
+    try {
+      await _peerConnection?.addCandidate(iceCandidate);
+      _log('✅ ICE CANDIDATE ADDED SUCCESSFULLY');
+    } catch (e) {
+      _log('❌ ERROR ADDING ICE CANDIDATE', e.toString());
+    }
+  }
+
+  Future<void> _processQueuedCandidates() async {
+    if (_pendingCandidates.isEmpty) return;
+    
+    _log('📦 PROCESSING ${_pendingCandidates.length} QUEUED ICE CANDIDATES');
+    
+    for (final candidate in _pendingCandidates) {
+      try {
+        await _peerConnection?.addCandidate(candidate);
+        _log('✅ QUEUED ICE CANDIDATE ADDED SUCCESSFULLY');
+      } catch (e) {
+        _log('❌ ERROR ADDING QUEUED ICE CANDIDATE', e.toString());
+      }
+    }
+    
+    _pendingCandidates.clear();
+    _log('📦 FINISHED PROCESSING QUEUED CANDIDATES');
   }
 
   void dispose() {
