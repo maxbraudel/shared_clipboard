@@ -103,18 +103,6 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 10),
               ElevatedButton.icon(
                 onPressed: _isInitialized ? () {
-                  _shareFiles();
-                } : null,
-                icon: const Icon(Icons.file_upload),
-                label: const Text('Share Files'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  backgroundColor: Colors.green,
-                ),
-              ),
-              const SizedBox(height: 10),
-              ElevatedButton.icon(
-                onPressed: _isInitialized ? () {
                   _requestClipboard();
                 } : null,
                 icon: const Icon(Icons.download),
@@ -130,62 +118,42 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _shareFiles() async {
+  void _shareClipboard() async {
     if (!_isInitialized) return;
     
     setState(() {
-      _status = 'Selecting files to share...';
+      _status = 'Reading clipboard...';
     });
     
     try {
-      print('📁 OPENING FILE PICKER FOR SHARING');
-      final clipboardContent = await _fileTransferService.selectFilesToShare();
+      print('� READING CLIPBOARD FOR SHARING');
+      
+      // Use file transfer service to detect files or text
+      final clipboardContent = await _fileTransferService.getClipboardContent();
       
       if (clipboardContent.isFiles && clipboardContent.files.isNotEmpty) {
-        print('📤 FILES SELECTED: ${clipboardContent.files.length} files');
-        print('📤 SENDING SHARE-READY TO SERVER');
+        // Files detected in clipboard
+        print('� FILES DETECTED IN CLIPBOARD: ${clipboardContent.files.length} files');
+        print('📤 SENDING SHARE-READY TO SERVER (FILES)');
         _socketService.sendShareReady();
         setState(() {
           _status = 'Ready to share ${clipboardContent.files.length} files: ${clipboardContent.files.map((f) => f.name).join(', ')}';
         });
         print("📋 FILES READY TO SHARE: ${clipboardContent.files.map((f) => f.name).join(', ')}");
-      } else {
-        setState(() {
-          _status = 'No files selected';
-        });
-        print('❌ NO FILES SELECTED');
-      }
-    } catch (e) {
-      setState(() {
-        _status = 'Error selecting files: $e';
-      });
-      print('❌ FILE SELECTION ERROR: $e');
-    }
-  }
-
-  void _shareClipboard() async {
-    if (!_isInitialized) return;
-    
-    setState(() {
-      _status = 'Sharing clipboard...';
-    });
-    
-    try {
-      print('📋 READING CLIPBOARD FOR SHARING');
-      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-      if (clipboardData != null && clipboardData.text != null) {
-        print('📤 CLIPBOARD CONTENT FOUND: "${clipboardData.text}"');
-        print('📤 SENDING SHARE-READY TO SERVER');
+      } else if (clipboardContent.text.isNotEmpty) {
+        // Regular text in clipboard
+        print('� TEXT DETECTED IN CLIPBOARD: "${clipboardContent.text}"');
+        print('📤 SENDING SHARE-READY TO SERVER (TEXT)');
         _socketService.sendShareReady();
         setState(() {
-          _status = 'Ready to share: "${clipboardData.text}"';
+          _status = 'Ready to share: "${clipboardContent.text}"';
         });
-        print("📋 CLIPBOARD READY TO SHARE: ${clipboardData.text}");
+        print("📋 TEXT READY TO SHARE: ${clipboardContent.text}");
       } else {
         setState(() {
-          _status = 'No text in clipboard';
+          _status = 'No content in clipboard';
         });
-        print('❌ NO TEXT IN CLIPBOARD');
+        print('❌ NO CONTENT IN CLIPBOARD');
       }
     } catch (e) {
       setState(() {

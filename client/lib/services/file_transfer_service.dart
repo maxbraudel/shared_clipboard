@@ -48,22 +48,27 @@ class FileTransferService {
     
     // Check if all lines look like file paths
     if (lines.isEmpty) return false;
+    if (lines.length > 10) return false; // Limit to 10 files
+    
+    int validFileCount = 0;
     
     for (String line in lines) {
       // Windows: C:\path\to\file or D:\folder\file.txt
       // macOS: /Users/username/file.txt or /Applications/app.app
-      if (!RegExp(r'^([a-zA-Z]:\\|/).*').hasMatch(line)) {
-        return false;
-      }
+      // Also handle quotes around paths: "C:\Program Files\file.txt"
+      String cleanPath = line.replaceAll('"', '').trim();
       
-      // Check if file exists
-      final file = File(line);
-      if (!file.existsSync()) {
-        return false;
+      if (RegExp(r'^([a-zA-Z]:\\|/).*').hasMatch(cleanPath)) {
+        // Check if file exists
+        final file = File(cleanPath);
+        if (file.existsSync()) {
+          validFileCount++;
+        }
       }
     }
     
-    return lines.length <= 10; // Limit to 10 files
+    // Consider it file paths if at least one valid file found and most lines look like paths
+    return validFileCount > 0 && validFileCount >= (lines.length * 0.7).ceil();
   }
 
   // Get clipboard content (text or files)
@@ -97,8 +102,11 @@ class FileTransferService {
       final lines = text.split('\n').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
       List<FileData> files = [];
       
-      for (String filePath in lines) {
+      for (String line in lines) {
         if (files.length >= 10) break; // Limit to 10 files
+        
+        // Clean the path (remove quotes if present)
+        String filePath = line.replaceAll('"', '').trim();
         
         final file = File(filePath);
         if (!await file.exists()) {
