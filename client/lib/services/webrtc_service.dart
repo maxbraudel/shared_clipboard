@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -7,6 +8,7 @@ class WebRTCService {
   String? _peerId;
   bool _isInitialized = false;
   String? _pendingClipboardContent;
+  bool _isResetting = false; // Prevent multiple resets
   
   // Callback to send signals back to socket service
   Function(String to, dynamic signal)? onSignalGenerated;
@@ -24,40 +26,56 @@ class WebRTCService {
   }
 
   Future<void> init() async {
-    if (_isInitialized) return;
+    if (_isInitialized) {
+      _log('⚠️ ALREADY INITIALIZED, SKIPPING');
+      return;
+    }
     
     _log('🚀 INITIALIZING WEBRTC SERVICE');
     
-    final configuration = {
-      'iceServers': [
-        {'urls': 'stun:stun.l.google.com:19302'},
-      ]
-    };
-    _peerConnection = await createPeerConnection(configuration);
-    _isInitialized = true;
+    try {
+      final configuration = {
+        'iceServers': [
+          {'urls': 'stun:stun.l.google.com:19302'},
+        ]
+      };
+      
+      // Create peer connection with timeout protection
+      _peerConnection = await Future.any([
+        createPeerConnection(configuration),
+        Future.delayed(Duration(seconds: 2)).then((_) => throw TimeoutException('PeerConnection creation timeout', Duration(seconds: 2))),
+      ]);
+      
+      _isInitialized = true;
 
-    _peerConnection?.onIceCandidate = (candidate) {
-      _log('🧊 ICE CANDIDATE GENERATED');
-      if (_peerId != null && onSignalGenerated != null) {
-        onSignalGenerated!(_peerId!, {
-          'type': 'candidate',
-          'candidate': candidate.candidate,
-          'sdpMid': candidate.sdpMid,
-          'sdpMLineIndex': candidate.sdpMLineIndex,
-        });
-      }
-    };
+      _peerConnection?.onIceCandidate = (candidate) {
+        _log('🧊 ICE CANDIDATE GENERATED');
+        if (_peerId != null && onSignalGenerated != null) {
+          onSignalGenerated!(_peerId!, {
+            'type': 'candidate',
+            'candidate': candidate.candidate,
+            'sdpMid': candidate.sdpMid,
+            'sdpMLineIndex': candidate.sdpMLineIndex,
+          });
+        }
+      };
 
-    _peerConnection?.onConnectionState = (state) {
-      _log('🔗 CONNECTION STATE CHANGED', state.toString());
-    };
+      _peerConnection?.onConnectionState = (state) {
+        _log('🔗 CONNECTION STATE CHANGED', state.toString());
+      };
 
-    _peerConnection?.onDataChannel = (channel) {
-      _log('📡 DATA CHANNEL RECEIVED');
-      _setupDataChannel(channel);
-    };
-    
-    _log('✅ WEBRTC SERVICE INITIALIZED');
+      _peerConnection?.onDataChannel = (channel) {
+        _log('📡 DATA CHANNEL RECEIVED');
+        _setupDataChannel(channel);
+      };
+      
+      _log('✅ WEBRTC SERVICE INITIALIZED');
+    } catch (e) {
+      _log('❌ ERROR INITIALIZING WEBRTC SERVICE', e.toString());
+      _isInitialized = false;
+      _peerConnection = null;
+      rethrow;
+    }
   }
 
   void _setupDataChannel(RTCDataChannel channel) {
@@ -112,30 +130,72 @@ class WebRTCService {
   }
 
   Future<void> _resetConnection() async {
+    // Prevent multiple simultaneous resets
+    if (_isResetting) {
+      _log('⚠️ RESET ALREADY IN PROGRESS, SKIPPING');
+      return;
+    }
+    
+    _isResetting = true;
     _log('🔄 RESETTING PEER CONNECTION FOR NEW SHARE');
     
-    // Close existing data channel
-    if (_dataChannel != null) {
-      _log('📡 CLOSING EXISTING DATA CHANNEL');
-      _dataChannel?.close();
-      _dataChannel = null;
+    try {
+      // Quick synchronous cleanup first
+      _forceCleanup();
+      
+      // Close connections with individual try-catch blocks
+      if (_dataChannel != null) {
+        _log('📡 CLOSING EXISTING DATA CHANNEL');
+        try {
+          _dataChannel?.close();
+        } catch (e) {
+          _log('⚠️ ERROR CLOSING DATA CHANNEL (IGNORING)', e.toString());
+        }
+        _dataChannel = null;
+      }
+      
+      if (_peerConnection != null) {
+        _log('🔗 CLOSING EXISTING PEER CONNECTION');
+        try {
+          _peerConnection?.close();
+        } catch (e) {
+          _log('⚠️ ERROR CLOSING PEER CONNECTION (IGNORING)', e.toString());
+        }
+        _peerConnection = null;
+      }
+      
+      // Reinitialize with timeout protection
+      await _initWithTimeout();
+      _log('✅ PEER CONNECTION RESET COMPLETE');
+    } catch (e) {
+      _log('❌ ERROR DURING RESET (FORCING CLEANUP)', e.toString());
+      _forceCleanup();
+      
+      // Try to reinitialize anyway
+      try {
+        await _initWithTimeout();
+        _log('✅ FORCED RESET RECOVERY SUCCESSFUL');
+      } catch (recoveryError) {
+        _log('❌ FORCED RESET RECOVERY FAILED', recoveryError.toString());
+      }
+    } finally {
+      _isResetting = false;
     }
-    
-    // Close existing peer connection
-    if (_peerConnection != null) {
-      _log('🔗 CLOSING EXISTING PEER CONNECTION');
-      _peerConnection?.close();
-      _peerConnection = null;
-    }
-    
-    // Clear any pending content and peer ID
+  }
+
+  Future<void> _initWithTimeout() async {
+    return Future.any([
+      init(),
+      Future.delayed(Duration(seconds: 3)).then((_) => throw TimeoutException('Init timeout', Duration(seconds: 3))),
+    ]);
+  }
+
+  void _forceCleanup() {
+    _dataChannel = null;
+    _peerConnection = null;
     _pendingClipboardContent = null;
     _peerId = null;
     _isInitialized = false;
-    
-    // Reinitialize
-    await init();
-    _log('✅ PEER CONNECTION RESET COMPLETE');
   }
 
   Future<void> createOffer(String? peerId) async {
