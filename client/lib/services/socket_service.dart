@@ -1,5 +1,6 @@
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_clipboard/services/webrtc_service.dart';
+import 'dart:io';
 
 class SocketService {
   late IO.Socket socket;
@@ -51,10 +52,42 @@ class SocketService {
     _log('🔌 ATTEMPTING TO CONNECT');
     socket.connect();
 
-    socket.onConnect((_) {
+    socket.onConnect((_) async {
       _log('✅ CONNECTED TO SERVER');
       _log('🆔 OUR SOCKET ID', socket.id);
-      socket.emit('register', {});
+      
+      // Get hostname/computer name
+      String deviceName = 'Unknown Device';
+      try {
+        // Try to get the hostname from Platform
+        if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+          // For desktop platforms, try to get hostname
+          final result = await Process.run('hostname', []);
+          if (result.exitCode == 0 && result.stdout.toString().trim().isNotEmpty) {
+            deviceName = result.stdout.toString().trim();
+          }
+        } else if (Platform.isAndroid) {
+          deviceName = 'Android Device';
+        } else if (Platform.isIOS) {
+          deviceName = 'iOS Device';
+        }
+      } catch (e) {
+        _log('⚠️ Could not get hostname', e.toString());
+        // Fallback to platform name
+        if (Platform.isMacOS) {
+          deviceName = 'Mac';
+        } else if (Platform.isWindows) {
+          deviceName = 'Windows PC';
+        } else if (Platform.isLinux) {
+          deviceName = 'Linux PC';
+        }
+      }
+      
+      _log('📝 REGISTERING WITH DEVICE NAME', deviceName);
+      socket.emit('register', {
+        'deviceName': deviceName,
+        'platform': Platform.operatingSystem,
+      });
       
       // Request existing connected devices with a delay to ensure we're registered
       Future.delayed(Duration(milliseconds: 500), () {

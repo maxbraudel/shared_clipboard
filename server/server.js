@@ -40,32 +40,9 @@ function sendDevicesList(socket) {
   const otherDevices = Object.keys(devices).filter(id => id !== socket.id);
   const devicesList = otherDevices.map(deviceId => {
     const deviceInfo = devices[deviceId];
-    const deviceSocket = io.sockets.sockets.get(deviceId);
     
-    // Extract device name from user agent or use a fallback
-    let deviceName = `Device ${deviceId.substring(0, 8)}`;
-    
-    if (deviceSocket && deviceSocket.request.headers['user-agent']) {
-      const userAgent = deviceSocket.request.headers['user-agent'];
-      
-      // Try to extract meaningful device info from user agent
-      if (userAgent.includes('Macintosh')) {
-        const macMatch = userAgent.match(/Macintosh[^)]*Intel[^)]*Mac OS X[^)]*\)/);
-        if (macMatch) {
-          deviceName = `MacBook-${deviceId.substring(0, 6)}`;
-        } else {
-          deviceName = `Mac-${deviceId.substring(0, 6)}`;
-        }
-      } else if (userAgent.includes('Windows')) {
-        deviceName = `Windows-${deviceId.substring(0, 6)}`;
-      } else if (userAgent.includes('iPhone')) {
-        deviceName = `iPhone-${deviceId.substring(0, 6)}`;
-      } else if (userAgent.includes('Android')) {
-        deviceName = `Android-${deviceId.substring(0, 6)}`;
-      } else if (userAgent.includes('Linux')) {
-        deviceName = `Linux-${deviceId.substring(0, 6)}`;
-      }
-    }
+    // Use the stored device name from registration
+    const deviceName = deviceInfo.deviceName || `Device ${deviceId.substring(0, 8)}`;
     
     return {
       id: deviceId,
@@ -150,32 +127,35 @@ io.on('connection', (socket) => {
       userAgent: socket.request.headers['user-agent']
     });
     
-    devices[socket.id] = { readyToShare: false, signalingData: null };
+    // Use device name from client data if available, otherwise extract from user agent
+    let deviceName = data && data.deviceName ? data.deviceName : `Device ${socket.id.substring(0, 8)}`;
     
-    // Extract device name from user agent
-    let deviceName = `Device ${socket.id.substring(0, 8)}`;
-    
-    if (socket.request.headers['user-agent']) {
-      const userAgent = socket.request.headers['user-agent'];
-      
-      // Try to extract meaningful device info from user agent
-      if (userAgent.includes('Macintosh')) {
-        const macMatch = userAgent.match(/Macintosh[^)]*Intel[^)]*Mac OS X[^)]*\)/);
-        if (macMatch) {
-          deviceName = `MacBook-${socket.id.substring(0, 6)}`;
-        } else {
-          deviceName = `Mac-${socket.id.substring(0, 6)}`;
+    // If no device name from client, fall back to user agent extraction
+    if (!data || !data.deviceName) {
+      if (socket.request.headers['user-agent']) {
+        const userAgent = socket.request.headers['user-agent'];
+        
+        // Try to extract meaningful device info from user agent
+        if (userAgent.includes('Macintosh')) {
+          deviceName = `Mac Computer`;
+        } else if (userAgent.includes('Windows')) {
+          deviceName = `Windows PC`;
+        } else if (userAgent.includes('iPhone')) {
+          deviceName = `iPhone`;
+        } else if (userAgent.includes('Android')) {
+          deviceName = `Android Device`;
+        } else if (userAgent.includes('Linux')) {
+          deviceName = `Linux PC`;
         }
-      } else if (userAgent.includes('Windows')) {
-        deviceName = `Windows-${socket.id.substring(0, 6)}`;
-      } else if (userAgent.includes('iPhone')) {
-        deviceName = `iPhone-${socket.id.substring(0, 6)}`;
-      } else if (userAgent.includes('Android')) {
-        deviceName = `Android-${socket.id.substring(0, 6)}`;
-      } else if (userAgent.includes('Linux')) {
-        deviceName = `Linux-${socket.id.substring(0, 6)}`;
       }
     }
+    
+    devices[socket.id] = { 
+      readyToShare: false, 
+      signalingData: null,
+      deviceName: deviceName,
+      platform: data && data.platform ? data.platform : 'unknown'
+    };
     
     log('📢 BROADCASTING device-connected', {
       newDeviceId: socket.id.substring(0, 8) + '...',
