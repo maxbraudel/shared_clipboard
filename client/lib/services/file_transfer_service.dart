@@ -6,8 +6,25 @@ import 'package:mime/mime.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:shared_clipboard/services/windows_clipboard_debug.dart';
+import 'package:shared_cl  void _showFileReceivedMessage(int fileCount, String location) {
+    print('\n🎉 FILES RECEIVED SUCCESSFULLY! 🎉');
+    print('📁 $fileCount file(s) transferred');
+    
+    if (location.contains('native clipboard')) {
+      print('✅ FILES ARE NOW IN SYSTEM CLIPBOARD!');
+      print('📋 You can now paste (Cmd+V) these files anywhere!');
+      print('🎯 Files will be copied to wherever you paste them');
+      print('✨ This works just like copying files from Finder!');
+    } else {
+      print('📂 Files saved to: $location');
+      print('⚠️ FALLBACK: File paths copied to clipboard as text');
+      print('💡 When you paste, you\'ll see file paths instead of files');
+      print('📂 Navigate to those paths to access the actual files');
+    }
+    print('');
+  }ervices/windows_clipboard_debug.dart';
 import 'package:shared_clipboard/services/windows_file_clipboard.dart';
+import 'package:shared_clipboard/services/native_file_clipboard.dart';
 
 class FileTransferService {
   static const int MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit for safety
@@ -242,11 +259,18 @@ class FileTransferService {
     try {
       _log('📁 SETTING FILES TO SYSTEM CLIPBOARD', '${files.length} files');
       
-      // For now, we'll use the fallback method until native clipboard is fully integrated
-      // TODO: Replace with native clipboard when ready
-      _log('⚠️ USING FALLBACK METHOD - Native clipboard integration pending');
+      // Try native clipboard first (this puts actual files in clipboard!)
+      final success = await NativeFileClipboard.putFilesToClipboard(files);
       
-      // Create temporary directory for received files
+      if (success) {
+        _log('🎉 FILES SET TO NATIVE CLIPBOARD SUCCESSFULLY!');
+        _showFileReceivedMessage(files.length, 'native clipboard - ready to paste!');
+        return;
+      } else {
+        _log('⚠️ NATIVE CLIPBOARD FAILED, FALLING BACK TO FILE PATHS');
+      }
+      
+      // Fallback: Create temporary directory for received files and set paths
       final tempDir = await getTemporaryDirectory();
       final receivedDir = Directory('${tempDir.path}/shared_clipboard_received');
       if (!await receivedDir.exists()) {
@@ -278,13 +302,11 @@ class FileTransferService {
       }
       
       if (filePaths.isNotEmpty) {
-        // For now: Set file paths to clipboard as text 
-        // Later: This will be replaced with native file clipboard that puts actual files
+        // Fallback: Set file paths to clipboard as text
         final pathsText = filePaths.join('\n');
         await Clipboard.setData(ClipboardData(text: pathsText));
-        _log('✅ FILE PATHS SET TO CLIPBOARD (TEMPORARY BEHAVIOR)', '${filePaths.length} files');
+        _log('📋 FALLBACK: FILE PATHS SET TO CLIPBOARD AS TEXT', '${filePaths.length} files');
         
-        // Show improved message explaining the current behavior
         _showFileReceivedMessage(files.length, receivedDir.path);
       }
     } catch (e) {
