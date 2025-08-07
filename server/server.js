@@ -35,6 +35,44 @@ const io = socketIo(server, {
 
 let devices = {};
 
+// Helper function to send devices list to a specific client
+function sendDevicesList(socket) {
+  const otherDevices = Object.keys(devices).filter(id => id !== socket.id);
+  const devicesList = otherDevices.map(deviceId => ({
+    id: deviceId,
+    deviceId: deviceId,
+    socketId: deviceId,
+    readyToShare: devices[deviceId].readyToShare
+  }));
+  
+  log('📤 SENDING DEVICES LIST', {
+    to: socket.id.substring(0, 8) + '...',
+    devicesCount: devicesList.length,
+    devices: devicesList.map(d => ({
+      id: d.id.substring(0, 8) + '...',
+      readyToShare: d.readyToShare
+    }))
+  });
+  
+  // Send the list using multiple event names to match what the client is listening for
+  socket.emit('devices', devicesList);
+  socket.emit('clients', devicesList);
+  socket.emit('room-info', { clients: devicesList });
+  
+  // Also emit individual device-connected events for each existing device
+  otherDevices.forEach(deviceId => {
+    log('📱 SENDING INDIVIDUAL device-connected', {
+      to: socket.id.substring(0, 8) + '...',
+      deviceId: deviceId.substring(0, 8) + '...'
+    });
+    socket.emit('device-connected', { 
+      id: deviceId, 
+      deviceId: deviceId,
+      socketId: deviceId 
+    });
+  });
+}
+
 // Helper function for timestamped logging
 function log(message, data = null) {
   const timestamp = new Date().toISOString();
@@ -84,6 +122,12 @@ io.on('connection', (socket) => {
     });
     
     socket.broadcast.emit('device-connected', { deviceId: socket.id });
+    
+    // Immediately send existing devices list to the newly registered client
+    log('📋 SENDING EXISTING DEVICES TO NEW CLIENT', {
+      newClient: socket.id.substring(0, 8) + '...'
+    });
+    sendDevicesList(socket);
     
     log('📊 UPDATED DEVICES STATE AFTER REGISTRATION', {
       totalDevices: Object.keys(devices).length,
@@ -215,9 +259,53 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Handle requests for connected devices list
+  socket.on('get-devices', () => {
+    log('📋 GET-DEVICES REQUEST', {
+      requester: socket.id.substring(0, 8) + '...'
+    });
+    sendDevicesList(socket);
+  });
+
+  socket.on('list-devices', () => {
+    log('📋 LIST-DEVICES REQUEST', {
+      requester: socket.id.substring(0, 8) + '...'
+    });
+    sendDevicesList(socket);
+  });
+
+  socket.on('get-connected-devices', () => {
+    log('📋 GET-CONNECTED-DEVICES REQUEST', {
+      requester: socket.id.substring(0, 8) + '...'
+    });
+    sendDevicesList(socket);
+  });
+
+  socket.on('devices', () => {
+    log('📋 DEVICES REQUEST', {
+      requester: socket.id.substring(0, 8) + '...'
+    });
+    sendDevicesList(socket);
+  });
+
+  socket.on('clients', () => {
+    log('📋 CLIENTS REQUEST', {
+      requester: socket.id.substring(0, 8) + '...'
+    });
+    sendDevicesList(socket);
+  });
+
+  socket.on('room-info', () => {
+    log('📋 ROOM-INFO REQUEST', {
+      requester: socket.id.substring(0, 8) + '...'
+    });
+    sendDevicesList(socket);
+  });
+
   // Log any unhandled events
   socket.onAny((eventName, ...args) => {
-    if (!['register', 'share-ready', 'request-share', 'webrtc-signal', 'disconnect'].includes(eventName)) {
+    if (!['register', 'share-ready', 'request-share', 'webrtc-signal', 'disconnect', 
+          'get-devices', 'list-devices', 'get-connected-devices', 'devices', 'clients', 'room-info'].includes(eventName)) {
       log('🔍 UNHANDLED EVENT', {
         event: eventName,
         from: socket.id.substring(0, 8) + '...',
