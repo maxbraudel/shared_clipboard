@@ -6,23 +6,7 @@ import 'package:mime/mime.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:shared_cl  void _showFileReceivedMessage(int fileCount, String location) {
-    print('\n🎉 FILES RECEIVED SUCCESSFULLY! 🎉');
-    print('📁 $fileCount file(s) transferred');
-    
-    if (location.contains('native clipboard')) {
-      print('✅ FILES ARE NOW IN SYSTEM CLIPBOARD!');
-      print('📋 You can now paste (Cmd+V) these files anywhere!');
-      print('🎯 Files will be copied to wherever you paste them');
-      print('✨ This works just like copying files from Finder!');
-    } else {
-      print('📂 Files saved to: $location');
-      print('⚠️ FALLBACK: File paths copied to clipboard as text');
-      print('💡 When you paste, you\'ll see file paths instead of files');
-      print('📂 Navigate to those paths to access the actual files');
-    }
-    print('');
-  }ervices/windows_clipboard_debug.dart';
+import 'package:shared_clipboard/services/windows_clipboard_debug.dart';
 import 'package:shared_clipboard/services/windows_file_clipboard.dart';
 import 'package:shared_clipboard/services/native_file_clipboard.dart';
 

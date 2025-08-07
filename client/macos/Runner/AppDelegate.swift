@@ -14,10 +14,7 @@ class AppDelegate: FlutterAppDelegate {
   override func applicationDidFinishLaunching(_ notification: Notification) {
     super.applicationDidFinishLaunching(notification)
     
-    // Register the NativeFileClipboard plugin
-    if let controller = mainFlutterWindow?.contentViewController as? FlutterViewController {
-      NativeFileClipboardPlugin.register(with: controller.registrar(forPlugin: "NativeFileClipboardPlugin"))
-      print("✅ Native File Clipboard Plugin registered successfully")
-    }
+    // TODO: Register native file clipboard plugin
+    print("🚀 App started - native plugin registration pending")
   }
 }
