@@ -7,7 +7,7 @@ class SocketService {
 
   void init({required WebRTCService webrtcService}) {
     _webrtcService = webrtcService;
-    socket = IO.io('http://localhost:3000', <String, dynamic>{
+    socket = IO.io('https://test3.braudelserveur.com', <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
     });

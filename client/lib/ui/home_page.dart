@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
   @override
   _HomePageState createState() => _HomePageState();
 }
@@ -13,7 +15,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Shared Clipboard'),
+        title: const Text('Shared Clipboard'),
         backgroundColor: Colors.blue,
       ),
       body: Container(
@@ -22,20 +24,20 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(
+              const Icon(
                 Icons.content_copy,
                 size: 64,
                 color: Colors.blue,
               ),
-              SizedBox(height: 20),
-              Text(
+              const SizedBox(height: 20),
+              const Text(
                 'Shared Clipboard',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               Text(
                 _status,
                 style: TextStyle(
@@ -43,26 +45,26 @@ class _HomePageState extends State<HomePage> {
                   color: Colors.grey[600],
                 ),
               ),
-              SizedBox(height: 40),
+              const SizedBox(height: 40),
               ElevatedButton.icon(
                 onPressed: () {
                   _shareClipboard();
                 },
-                icon: Icon(Icons.share),
-                label: Text('Share Clipboard (Cmd/Ctrl+F12)'),
+                icon: const Icon(Icons.share),
+                label: const Text('Share Clipboard (Cmd/Ctrl+F12)'),
                 style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 ),
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               ElevatedButton.icon(
                 onPressed: () {
                   _requestClipboard();
                 },
-                icon: Icon(Icons.download),
-                label: Text('Get Clipboard (Cmd/Ctrl+F11)'),
+                icon: const Icon(Icons.download),
+                label: const Text('Get Clipboard (Cmd/Ctrl+F11)'),
                 style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 ),
               ),
             ],
@@ -104,7 +106,7 @@ class _HomePageState extends State<HomePage> {
     print("Requesting clipboard content");
     
     // For now, just simulate receiving content
-    Future.delayed(Duration(seconds: 1), () {
+    Future.delayed(const Duration(seconds: 1), () {
       setState(() {
         _status = 'Ready';
       });

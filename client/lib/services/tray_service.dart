@@ -1,5 +1,4 @@
 import 'package:system_tray/system_tray.dart';
-import 'dart:io' show Platform;
 
 class TrayService {
   static final SystemTray _systemTray = SystemTray();
