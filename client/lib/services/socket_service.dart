@@ -19,6 +19,11 @@ class SocketService {
     _log('🚀 INITIALIZING SOCKET SERVICE');
     _webrtcService = webrtcService;
     
+    // Set up the callback for WebRTC to send signals back through socket
+    _webrtcService.onSignalGenerated = (String to, dynamic signal) {
+      sendSignal(to, signal);
+    };
+    
     _log('🔗 CREATING SOCKET CONNECTION', {
       'url': 'https://test3.braudelserveur.com',
       'transports': ['websocket'],
@@ -60,11 +65,20 @@ class SocketService {
       socket.emit('register', {});
     });
 
-    socket.on('share-request', (data) {
+    socket.on('share-request', (data) async {
       _log('📥 SHARE REQUEST RECEIVED', data);
-      // Extract the sender ID and pass it to the WebRTC service
-      String senderId = data['from'] ?? 'unknown';
-      _webrtcService.createOffer(null, senderId); // Content will be sent via data channel
+      // When we receive a share request, we should create an offer and send our clipboard
+      String requesterId = data['from'] ?? 'unknown';
+      _log('📤 CREATING OFFER TO SEND CLIPBOARD TO REQUESTER', requesterId);
+      
+      try {
+        _log('🔧 CALLING WEBRTC SERVICE createOffer');
+        await _webrtcService.createOffer(requesterId); // Make it await
+        _log('✅ WEBRTC createOffer COMPLETED SUCCESSFULLY');
+      } catch (e, stackTrace) {
+        _log('❌ ERROR CALLING WEBRTC createOffer', e.toString());
+        _log('❌ STACK TRACE', stackTrace.toString());
+      }
     });
 
     socket.on('webrtc-signal', (data) {

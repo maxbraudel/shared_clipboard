@@ -1,18 +1,32 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:shared_clipboard/services/socket_service.dart';
 
 class WebRTCService {
-  final SocketService socketService;
   RTCPeerConnection? _peerConnection;
   RTCDataChannel? _dataChannel;
   String? _peerId;
   bool _isInitialized = false;
+  String? _pendingClipboardContent;
+  
+  // Callback to send signals back to socket service
+  Function(String to, dynamic signal)? onSignalGenerated;
 
-  WebRTCService({required this.socketService});
+  WebRTCService();
+
+  // Helper function for timestamped logging
+  void _log(String message, [dynamic data]) {
+    final timestamp = DateTime.now().toIso8601String();
+    if (data != null) {
+      print('[$timestamp] WEBRTC: $message - $data');
+    } else {
+      print('[$timestamp] WEBRTC: $message');
+    }
+  }
 
   Future<void> init() async {
     if (_isInitialized) return;
+    
+    _log('🚀 INITIALIZING WEBRTC SERVICE');
     
     final configuration = {
       'iceServers': [
@@ -23,8 +37,9 @@ class WebRTCService {
     _isInitialized = true;
 
     _peerConnection?.onIceCandidate = (candidate) {
-      if (_peerId != null) {
-        socketService.sendSignal(_peerId!, {
+      _log('🧊 ICE CANDIDATE GENERATED');
+      if (_peerId != null && onSignalGenerated != null) {
+        onSignalGenerated!(_peerId!, {
           'type': 'candidate',
           'candidate': candidate.candidate,
           'sdpMid': candidate.sdpMid,
@@ -33,41 +48,133 @@ class WebRTCService {
       }
     };
 
+    _peerConnection?.onConnectionState = (state) {
+      _log('🔗 CONNECTION STATE CHANGED', state.toString());
+    };
+
     _peerConnection?.onDataChannel = (channel) {
-      _dataChannel = channel;
-      _dataChannel?.onMessage = (message) {
-        print("Received data: ${message.text}");
+      _log('📡 DATA CHANNEL RECEIVED');
+      _setupDataChannel(channel);
+    };
+    
+    _log('✅ WEBRTC SERVICE INITIALIZED');
+  }
+
+  void _setupDataChannel(RTCDataChannel channel) {
+    _dataChannel = channel;
+    _log('📡 SETTING UP DATA CHANNEL', {
+      'label': channel.label,
+      'state': channel.state.toString(),
+      'hasPendingContent': _pendingClipboardContent != null,
+      'role': _pendingClipboardContent != null ? 'SENDER' : 'RECEIVER'
+    });
+    
+    // Check if channel is already open
+    if (channel.state == RTCDataChannelState.RTCDataChannelOpen) {
+      _log('📡 DATA CHANNEL IS ALREADY OPEN DURING SETUP');
+      _handleDataChannelOpen();
+    }
+    
+    _dataChannel?.onDataChannelState = (state) {
+      _log('📡 DATA CHANNEL STATE CHANGED', state.toString());
+      if (state == RTCDataChannelState.RTCDataChannelOpen) {
+        _handleDataChannelOpen();
+      }
+    };
+
+    _dataChannel?.onMessage = (message) {
+      _log('📥 RECEIVED DATA MESSAGE (RECEIVER ROLE)', message.text);
+      try {
         Clipboard.setData(ClipboardData(text: message.text));
-      };
+        _log('📋 CLIPBOARD UPDATED SUCCESSFULLY');
+      } catch (e) {
+        _log('❌ ERROR UPDATING CLIPBOARD', e.toString());
+      }
     };
   }
 
-  Future<void> createOffer(String? content, [String? peerId]) async {
-    if (!_isInitialized) {
-      await init();
-    }
+  void _handleDataChannelOpen() {
+    _log('✅ DATA CHANNEL IS NOW OPEN');
     
-    if (_peerConnection == null) {
-      print('ERROR: PeerConnection is null, cannot create offer');
-      return;
-    }
-    
-    // Set peer ID if provided
-    if (peerId != null) {
-      _peerId = peerId;
-    }
-    
-    _dataChannel = await _peerConnection?.createDataChannel('clipboard', RTCDataChannelInit());
-    if (content != null) {
-      _dataChannel?.send(RTCDataChannelMessage(content));
-    }
-    RTCSessionDescription description = await _peerConnection!.createOffer();
-    await _peerConnection!.setLocalDescription(description);
-    
-    if (_peerId != null) {
-      socketService.sendSignal(_peerId!, {'type': 'offer', 'sdp': description.sdp});
+    // Only send content if we have pending content (i.e., we're the sender)
+    if (_pendingClipboardContent != null) {
+      _log('📤 SENDING PENDING CLIPBOARD CONTENT (SENDER ROLE)', _pendingClipboardContent);
+      try {
+        _dataChannel?.send(RTCDataChannelMessage(_pendingClipboardContent!));
+        _log('✅ CLIPBOARD CONTENT SENT SUCCESSFULLY');
+        _pendingClipboardContent = null;
+      } catch (e) {
+        _log('❌ ERROR SENDING CLIPBOARD CONTENT', e.toString());
+      }
     } else {
-      print('ERROR: _peerId is null, cannot send signal');
+      _log('⚠️ NO PENDING CLIPBOARD CONTENT TO SEND');
+    }
+  }
+
+  Future<void> createOffer(String? peerId) async {
+    try {
+      _log('🎯 createOffer CALLED', peerId);
+      
+      if (!_isInitialized) {
+        _log('⚠️ WebRTC not initialized, initializing now');
+        await init();
+      }
+      
+      if (_peerConnection == null) {
+        _log('❌ ERROR: PeerConnection is null, cannot create offer');
+        return;
+      }
+      
+      // Set peer ID if provided
+      if (peerId != null) {
+        _peerId = peerId;
+        _log('🎯 CREATING OFFER FOR PEER', peerId);
+      }
+      
+      // Read current clipboard content
+      try {
+        _log('📋 READING CLIPBOARD FOR OFFER');
+        final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+        if (clipboardData != null && clipboardData.text != null) {
+          _pendingClipboardContent = clipboardData.text;
+          _log('📋 CLIPBOARD CONTENT TO SHARE', clipboardData.text);
+        } else {
+          _log('❌ NO CLIPBOARD CONTENT TO SHARE');
+        }
+      } catch (e) {
+        _log('❌ ERROR READING CLIPBOARD', e.toString());
+      }
+      
+      // Create data channel
+      _log('📡 CREATING DATA CHANNEL');
+      _dataChannel = await _peerConnection?.createDataChannel('clipboard', RTCDataChannelInit());
+      if (_dataChannel != null) {
+        _log('✅ DATA CHANNEL CREATED', {
+          'label': _dataChannel!.label,
+          'state': _dataChannel!.state.toString()
+        });
+        _log('📡 SETTING UP DATA CHANNEL MANUALLY (SENDER SIDE)');
+        _setupDataChannel(_dataChannel!);
+      } else {
+        _log('❌ FAILED TO CREATE DATA CHANNEL');
+      }
+      
+      // Create and send offer
+      _log('📡 CREATING OFFER');
+      RTCSessionDescription description = await _peerConnection!.createOffer();
+      await _peerConnection!.setLocalDescription(description);
+      
+      if (_peerId != null && onSignalGenerated != null) {
+        _log('📤 SENDING OFFER TO PEER', _peerId);
+        onSignalGenerated!(_peerId!, {'type': 'offer', 'sdp': description.sdp});
+      } else {
+        _log('❌ ERROR: _peerId is null or callback not set, cannot send signal');
+      }
+      
+      _log('✅ createOffer COMPLETED SUCCESSFULLY');
+    } catch (e) {
+      _log('❌ CRITICAL ERROR in createOffer', e.toString());
+      _log('❌ STACK TRACE', e.toString());
     }
   }
 
@@ -77,15 +184,19 @@ class WebRTCService {
     }
     
     if (_peerConnection == null) {
-      print('ERROR: PeerConnection is null, cannot handle offer');
+      _log('❌ ERROR: PeerConnection is null, cannot handle offer');
       return;
     }
     
+    _log('📥 HANDLING OFFER FROM', from);
     _peerId = from;
     await _peerConnection?.setRemoteDescription(RTCSessionDescription(offer['sdp'], offer['type']));
     RTCSessionDescription description = await _peerConnection!.createAnswer();
     await _peerConnection!.setLocalDescription(description);
-    socketService.sendSignal(_peerId!, {'type': 'answer', 'sdp': description.sdp});
+    _log('📤 SENDING ANSWER');
+    if (onSignalGenerated != null) {
+      onSignalGenerated!(_peerId!, {'type': 'answer', 'sdp': description.sdp});
+    }
   }
 
   Future<void> handleAnswer(dynamic answer) async {
@@ -94,10 +205,11 @@ class WebRTCService {
     }
     
     if (_peerConnection == null) {
-      print('ERROR: PeerConnection is null, cannot handle answer');
+      _log('❌ ERROR: PeerConnection is null, cannot handle answer');
       return;
     }
     
+    _log('📥 HANDLING ANSWER');
     await _peerConnection?.setRemoteDescription(RTCSessionDescription(answer['sdp'], answer['type']));
   }
 
@@ -107,10 +219,11 @@ class WebRTCService {
     }
     
     if (_peerConnection == null) {
-      print('ERROR: PeerConnection is null, cannot handle candidate');
+      _log('❌ ERROR: PeerConnection is null, cannot handle candidate');
       return;
     }
     
+    _log('🧊 HANDLING ICE CANDIDATE');
     await _peerConnection?.addCandidate(
       RTCIceCandidate(
         candidate['candidate'],

@@ -28,7 +28,7 @@ class _HomePageState extends State<HomePage> {
       
       // Initialize services
       _socketService = SocketService();
-      _webrtcService = WebRTCService(socketService: _socketService);
+      _webrtcService = WebRTCService();
       
       // Initialize WebRTC first
       print('🔧 INITIALIZING WEBRTC SERVICE');
@@ -123,15 +123,16 @@ class _HomePageState extends State<HomePage> {
     });
     
     try {
-      print('📋 READING CLIPBOARD');
+      print('📋 READING CLIPBOARD FOR SHARING');
       final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
       if (clipboardData != null && clipboardData.text != null) {
+        print('📤 CLIPBOARD CONTENT FOUND: "${clipboardData.text}"');
         print('📤 SENDING SHARE-READY TO SERVER');
         _socketService.sendShareReady();
         setState(() {
           _status = 'Ready to share: "${clipboardData.text}"';
         });
-        print("📋 CLIPBOARD CONTENT: ${clipboardData.text}");
+        print("📋 CLIPBOARD READY TO SHARE: ${clipboardData.text}");
       } else {
         setState(() {
           _status = 'No text in clipboard';
