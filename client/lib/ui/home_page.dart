@@ -18,6 +18,7 @@ class _HomePageState extends State<HomePage> {
   late WebRTCService _webrtcService;
   late FileTransferService _fileTransferService;
   bool _isInitialized = false;
+  bool _isLoadingDevices = true; // Track device discovery loading state
   List<Map<String, dynamic>> _connectedDevices = [];
   Timer? _updateTimer;
 
@@ -75,6 +76,9 @@ class _HomePageState extends State<HomePage> {
               });
             }
           }
+          
+          // Stop loading when we get device responses (discovery is working)
+          _isLoadingDevices = false;
         });
       };
       
@@ -101,12 +105,24 @@ class _HomePageState extends State<HomePage> {
               });
             }
           }
+          
+          // Stop loading when we get the device list response
+          _isLoadingDevices = false;
         });
       };
       
       setState(() {
         _status = 'Ready';
         _isInitialized = true;
+      });
+      
+      // Set a timeout to stop loading if no devices are discovered
+      Timer(Duration(seconds: 5), () {
+        if (mounted && _isLoadingDevices) {
+          setState(() {
+            _isLoadingDevices = false;
+          });
+        }
       });
       
       // Start timer to update connected devices durations
@@ -276,7 +292,9 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(width: 8),
               Text(
-                'Connected Devices (${_connectedDevices.length})',
+                _isLoadingDevices 
+                    ? 'Connected Devices (discovering...)'
+                    : 'Connected Devices (${_connectedDevices.length})',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
@@ -291,33 +309,64 @@ class _HomePageState extends State<HomePage> {
               maxHeight: 200,
               maxWidth: 400,
             ),
-            child: _connectedDevices.isEmpty
+            child: _isLoadingDevices
                 ? Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.grey[100],
+                      color: Colors.blue[50],
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey[300]!),
+                      border: Border.all(color: Colors.blue[200]!),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: Colors.grey[500],
-                          size: 20,
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                          ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 12),
                         Text(
-                          'No devices connected',
+                          'Discovering devices...',
                           style: TextStyle(
-                            color: Colors.grey[600],
+                            color: Colors.blue[700],
                             fontSize: 14,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
                     ),
                   )
+                : _connectedDevices.isEmpty
+                    ? Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: Colors.grey[500],
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'No devices connected',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
                 : Container(
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.grey[300]!),
