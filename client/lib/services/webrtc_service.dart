@@ -319,8 +319,19 @@ class WebRTCService {
       // Set remote description with error handling
       _log('📡 SETTING REMOTE DESCRIPTION');
       await _peerConnection?.setRemoteDescription(RTCSessionDescription(offer['sdp'], offer['type']));
-      _remoteDescriptionSet = true;
-      _log('✅ REMOTE DESCRIPTION SET - Flag: $_remoteDescriptionSet');
+      
+      // Verify the remote description was actually set
+      final remoteDesc = _peerConnection?.getRemoteDescription();
+      if (remoteDesc != null) {
+        _remoteDescriptionSet = true;
+        _log('✅ REMOTE DESCRIPTION SET SUCCESSFULLY - Flag: $_remoteDescriptionSet');
+      } else {
+        _log('❌ REMOTE DESCRIPTION FAILED TO SET PROPERLY');
+        return;
+      }
+      
+      // Small delay to ensure the peer connection is fully ready
+      await Future.delayed(Duration(milliseconds: 50));
       
       // Process any queued candidates
       await _processQueuedCandidates();
@@ -335,7 +346,7 @@ class WebRTCService {
           // Small delay to ensure peer connection is fully ready
           if (retryCount > 0) {
             _log('🔄 RETRYING CREATE ANSWER - Attempt ${retryCount + 1}');
-            await Future.delayed(Duration(milliseconds: 100));
+            await Future.delayed(Duration(milliseconds: 100 * retryCount));
           }
           
           description = await _peerConnection!.createAnswer();
@@ -391,8 +402,14 @@ class WebRTCService {
       await init();
     }
     
-    if (_peerConnection == null) {
-      _log('❌ ERROR: PeerConnection is null, cannot handle candidate');
+    if (_peerConnection == null || _isResetting) {
+      _log('❌ ERROR: PeerConnection is null or resetting, queueing candidate');
+      final iceCandidate = RTCIceCandidate(
+        candidate['candidate'],
+        candidate['sdpMid'],
+        candidate['sdpMLineIndex'],
+      );
+      _pendingCandidates.add(iceCandidate);
       return;
     }
     
@@ -404,26 +421,29 @@ class WebRTCService {
     
     _log('🧊 HANDLING ICE CANDIDATE - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
     
-    if (!_remoteDescriptionSet) {
-      _log('📦 QUEUEING ICE CANDIDATE (remote description not set yet)');
+    // Always queue candidates if remote description isn't properly set
+    if (!_remoteDescriptionSet || _isResetting) {
+      _log('📦 QUEUEING ICE CANDIDATE (remote description not ready)');
       _pendingCandidates.add(iceCandidate);
       return;
     }
     
     _log('🧊 ADDING ICE CANDIDATE DIRECTLY');
     try {
+      // Double-check peer connection state before adding
+      if (_peerConnection?.getRemoteDescription() == null) {
+        _log('📦 QUEUEING CANDIDATE - Remote description actually null despite flag');
+        _pendingCandidates.add(iceCandidate);
+        return;
+      }
+      
       await _peerConnection?.addCandidate(iceCandidate);
       _log('✅ ICE CANDIDATE ADDED SUCCESSFULLY');
     } catch (e) {
       _log('❌ ERROR ADDING ICE CANDIDATE', e.toString());
-      // Only queue if the error is specifically about remote description
-      if (e.toString().contains('remote description was null') || 
-          e.toString().contains('remote description')) {
-        _log('📦 QUEUEING CANDIDATE DUE TO REMOTE DESCRIPTION ERROR');
-        _pendingCandidates.add(iceCandidate);
-      } else {
-        _log('❌ IGNORING CANDIDATE DUE TO OTHER ERROR');
-      }
+      // Always queue on any error - better safe than sorry
+      _log('📦 QUEUEING CANDIDATE DUE TO ERROR');
+      _pendingCandidates.add(iceCandidate);
     }
   }
 
@@ -432,17 +452,34 @@ class WebRTCService {
     
     _log('📦 PROCESSING ${_pendingCandidates.length} QUEUED ICE CANDIDATES');
     
-    for (final candidate in _pendingCandidates) {
+    // Verify remote description is actually set before processing
+    if (_peerConnection?.getRemoteDescription() == null) {
+      _log('⚠️ REMOTE DESCRIPTION STILL NULL, KEEPING CANDIDATES QUEUED');
+      return;
+    }
+    
+    final candidatesToProcess = List<RTCIceCandidate>.from(_pendingCandidates);
+    final failedCandidates = <RTCIceCandidate>[];
+    _pendingCandidates.clear();
+    
+    for (final candidate in candidatesToProcess) {
       try {
         await _peerConnection?.addCandidate(candidate);
         _log('✅ QUEUED ICE CANDIDATE ADDED SUCCESSFULLY');
       } catch (e) {
         _log('❌ ERROR ADDING QUEUED ICE CANDIDATE', e.toString());
+        // If it still fails, keep it for later
+        failedCandidates.add(candidate);
       }
     }
     
-    _pendingCandidates.clear();
-    _log('📦 FINISHED PROCESSING QUEUED CANDIDATES');
+    // Re-queue any candidates that still failed
+    if (failedCandidates.isNotEmpty) {
+      _log('📦 RE-QUEUEING ${failedCandidates.length} FAILED CANDIDATES');
+      _pendingCandidates.addAll(failedCandidates);
+    } else {
+      _log('📦 FINISHED PROCESSING ALL QUEUED CANDIDATES SUCCESSFULLY');
+    }
   }
 
   void dispose() {
