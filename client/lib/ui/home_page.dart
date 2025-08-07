@@ -61,15 +61,19 @@ class _HomePageState extends State<HomePage> {
       // Set up device event callbacks
       _socketService.onDeviceConnected = (device) {
         setState(() {
-          // Add device if not already in the list
+          // Add device if not already in the list and not ourselves
           final deviceId = device['id'] ?? device['socketId'] ?? 'unknown';
-          final existingIndex = _connectedDevices.indexWhere((d) => d['id'] == deviceId);
-          if (existingIndex == -1) {
-            _connectedDevices.add({
-              'id': deviceId,
-              'name': device['name'] ?? device['deviceName'] ?? 'Unknown Device',
-              'connectedAt': DateTime.now(),
-            });
+          final isOwnDevice = deviceId == _socketService.socket.id;
+          
+          if (!isOwnDevice) {
+            final existingIndex = _connectedDevices.indexWhere((d) => d['id'] == deviceId);
+            if (existingIndex == -1) {
+              _connectedDevices.add({
+                'id': deviceId,
+                'name': device['name'] ?? device['deviceName'] ?? 'Unknown Device',
+                'connectedAt': DateTime.now(),
+              });
+            }
           }
         });
       };
@@ -78,6 +82,25 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           final deviceId = device['id'] ?? device['socketId'] ?? 'unknown';
           _connectedDevices.removeWhere((d) => d['id'] == deviceId);
+        });
+      };
+      
+      _socketService.onConnectedDevicesList = (devices) {
+        setState(() {
+          // Replace the current list with the devices from the server (excluding ourselves)
+          _connectedDevices.clear();
+          for (var device in devices) {
+            final deviceId = device['id'] ?? device['socketId'] ?? 'unknown';
+            final isOwnDevice = deviceId == _socketService.socket.id;
+            
+            if (!isOwnDevice) {
+              _connectedDevices.add({
+                'id': deviceId,
+                'name': device['name'] ?? device['deviceName'] ?? 'Unknown Device',
+                'connectedAt': DateTime.now(), // We don't know the actual connection time
+              });
+            }
+          }
         });
       };
       

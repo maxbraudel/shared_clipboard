@@ -8,6 +8,7 @@ class SocketService {
   // Callbacks for UI updates
   Function(Map<String, dynamic> device)? onDeviceConnected;
   Function(Map<String, dynamic> device)? onDeviceDisconnected;
+  Function(List<Map<String, dynamic>> devices)? onConnectedDevicesList;
 
   // Helper function for timestamped logging
   void _log(String message, [dynamic data]) {
@@ -67,6 +68,10 @@ class SocketService {
       _log('✅ CONNECTED TO SERVER');
       _log('📝 SENDING REGISTRATION');
       socket.emit('register', {});
+      
+      // Request list of currently connected devices
+      _log('📋 REQUESTING CONNECTED DEVICES LIST');
+      socket.emit('get-connected-devices', {});
     });
 
     socket.on('share-request', (data) async {
@@ -105,6 +110,10 @@ class SocketService {
 
     socket.on('device-connected', (data) {
       _log('📱 DEVICE CONNECTED', data);
+      _log('📱 DEVICE CONNECTED DATA TYPE', data.runtimeType.toString());
+      if (data is Map) {
+        _log('📱 DEVICE CONNECTED MAP KEYS', data.keys.toList());
+      }
       if (onDeviceConnected != null) {
         onDeviceConnected!(data);
       }
@@ -112,6 +121,10 @@ class SocketService {
 
     socket.on('device-disconnected', (data) {
       _log('📱 DEVICE DISCONNECTED', data);
+      _log('📱 DEVICE DISCONNECTED DATA TYPE', data.runtimeType.toString());
+      if (data is Map) {
+        _log('📱 DEVICE DISCONNECTED MAP KEYS', data.keys.toList());
+      }
       if (onDeviceDisconnected != null) {
         onDeviceDisconnected!(data);
       }
@@ -119,6 +132,20 @@ class SocketService {
 
     socket.on('share-available', (data) {
       _log('🚀 SHARE AVAILABLE', data);
+    });
+
+    socket.on('connected-devices-list', (data) {
+      _log('📋 RECEIVED CONNECTED DEVICES LIST', data);
+      if (onConnectedDevicesList != null) {
+        // Convert the data to a list of device maps
+        List<Map<String, dynamic>> devices = [];
+        if (data is List) {
+          devices = data.cast<Map<String, dynamic>>();
+        } else if (data is Map && data['devices'] is List) {
+          devices = (data['devices'] as List).cast<Map<String, dynamic>>();
+        }
+        onConnectedDevicesList!(devices);
+      }
     });
 
     socket.onDisconnect((reason) {
@@ -136,7 +163,8 @@ class SocketService {
     // Log any unhandled events
     socket.onAny((event, data) {
       if (!['connect', 'disconnect', 'share-request', 'webrtc-signal', 
-            'device-connected', 'device-disconnected', 'share-available'].contains(event)) {
+            'device-connected', 'device-disconnected', 'share-available', 
+            'connected-devices-list'].contains(event)) {
         _log('🔍 UNHANDLED EVENT', {'event': event, 'data': data});
       }
     });
