@@ -1,0 +1,58 @@
+PODS:
+  - clipboard_watcher (0.0.1):
+    - FlutterMacOS
+  - flutter_webrtc (0.9.36):
+    - FlutterMacOS
+    - WebRTC-SDK (= 114.5735.08)
+  - FlutterMacOS (1.0.0)
+  - HotKey (0.2.1)
+  - hotkey_manager_macos (0.0.1):
+    - FlutterMacOS
+    - HotKey
+  - path_provider_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - system_tray (0.0.1):
+    - FlutterMacOS
+  - WebRTC-SDK (114.5735.08)
+
+DEPENDENCIES:
+  - clipboard_watcher (from `Flutter/ephemeral/.symlinks/plugins/clipboard_watcher/macos`)
+  - flutter_webrtc (from `Flutter/ephemeral/.symlinks/plugins/flutter_webrtc/macos`)
+  - FlutterMacOS (from `Flutter/ephemeral`)
+  - hotkey_manager_macos (from `Flutter/ephemeral/.symlinks/plugins/hotkey_manager_macos/macos`)
+  - path_provider_foundation (from `Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin`)
+  - system_tray (from `Flutter/ephemeral/.symlinks/plugins/system_tray/macos`)
+
+SPEC REPOS:
+  trunk:
+    - HotKey
+    - WebRTC-SDK
+
+EXTERNAL SOURCES:
+  clipboard_watcher:
+    :path: Flutter/ephemeral/.symlinks/plugins/clipboard_watcher/macos
+  flutter_webrtc:
+    :path: Flutter/ephemeral/.symlinks/plugins/flutter_webrtc/macos
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+  hotkey_manager_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/hotkey_manager_macos/macos
+  path_provider_foundation:
+    :path: Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin
+  system_tray:
+    :path: Flutter/ephemeral/.symlinks/plugins/system_tray/macos
+
+SPEC CHECKSUMS:
+  clipboard_watcher: e9c9d88b3aea4889fe80025037e690e73600b160
+  flutter_webrtc: 44172a666f0f625297c6e8b0a431918f7426a884
+  FlutterMacOS: 8f6f14fa908a6fb3fba0cd85dbd81ec4b251fb24
+  HotKey: 400beb7caa29054ea8d864c96f5ba7e5b4852277
+  hotkey_manager_macos: a4317849af96d2430fa89944d3c58977ca089fbe
+  path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
+  system_tray: 53f0cdb020c3fbee711d3fe45ae7ce730e033d2b
+  WebRTC-SDK: c24d2a6c9f571f2ed42297cb8ffba9557093142b
+
+PODFILE CHECKSUM: 7eb978b976557c8c1cd717d8185ec483fd090a82
+
+COCOAPODS: 1.16.2
