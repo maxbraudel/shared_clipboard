@@ -156,8 +156,10 @@ class WebRTCService {
     _log('🔄 RESETTING PEER CONNECTION FOR NEW SHARE');
     
     // Reset candidate queue and remote description flag
+    _log('🔍 BEFORE RESET - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
     _pendingCandidates.clear();
     _remoteDescriptionSet = false;
+    _log('🔍 AFTER RESET - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
     
     try {
       // Quick synchronous cleanup first
@@ -292,6 +294,7 @@ class WebRTCService {
 
   Future<void> handleOffer(dynamic offer, String from) async {
     _log('📥 HANDLING OFFER FROM', from);
+    _log('🔍 CURRENT STATE - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
     
     // Reset connection state for clean start
     await _resetConnection();
@@ -304,6 +307,7 @@ class WebRTCService {
     _peerId = from;
     await _peerConnection?.setRemoteDescription(RTCSessionDescription(offer['sdp'], offer['type']));
     _remoteDescriptionSet = true;
+    _log('✅ REMOTE DESCRIPTION SET - Flag: $_remoteDescriptionSet');
     
     // Process any queued candidates
     await _processQueuedCandidates();
@@ -350,18 +354,26 @@ class WebRTCService {
       candidate['sdpMLineIndex'],
     );
     
+    _log('🧊 HANDLING ICE CANDIDATE - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
+    
     if (!_remoteDescriptionSet) {
       _log('📦 QUEUEING ICE CANDIDATE (remote description not set yet)');
       _pendingCandidates.add(iceCandidate);
       return;
     }
     
-    _log('🧊 HANDLING ICE CANDIDATE');
+    _log('🧊 ADDING ICE CANDIDATE DIRECTLY');
     try {
       await _peerConnection?.addCandidate(iceCandidate);
       _log('✅ ICE CANDIDATE ADDED SUCCESSFULLY');
     } catch (e) {
       _log('❌ ERROR ADDING ICE CANDIDATE', e.toString());
+      // If adding fails due to remote description being null, queue it
+      if (e.toString().contains('remote description was null')) {
+        _log('📦 QUEUEING CANDIDATE DUE TO ERROR');
+        _remoteDescriptionSet = false;
+        _pendingCandidates.add(iceCandidate);
+      }
     }
   }
 
