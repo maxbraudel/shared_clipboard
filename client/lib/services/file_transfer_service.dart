@@ -295,9 +295,11 @@ class FileTransferService {
   void _showFileReceivedMessage(int fileCount, String dirPath) {
     print('\n🎉 FILES RECEIVED SUCCESSFULLY! 🎉');
     print('📁 $fileCount file(s) saved to: $dirPath');
-    print('📋 CURRENT BEHAVIOR: File paths copied to clipboard as text');
-    print('💡 To access files: Paste to see file paths or navigate to the folder');
-    print('🔄 FUTURE: Files will be directly pasteable to any location (like copy/paste from Finder)\n');
+    print('📋 CURRENT LIMITATION: File paths copied to clipboard as text');
+    print('💡 When you paste (Cmd+V), you\'ll see the file paths instead of files');
+    print('� To access files: Navigate to the paths shown when you paste');
+    print('🔮 GOAL: Enable direct file pasting (like copy/paste from Finder)');
+    print('');
   }
 
   // Serialize clipboard content for transfer
