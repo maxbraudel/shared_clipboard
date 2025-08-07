@@ -55,6 +55,23 @@ class SocketService {
       _log('✅ CONNECTED TO SERVER');
       _log('🆔 OUR SOCKET ID', socket.id);
       socket.emit('register', {});
+      
+      // Request existing connected devices with a delay to ensure we're registered
+      Future.delayed(Duration(milliseconds: 500), () {
+        _log('📋 REQUESTING EXISTING DEVICES');
+        // Try multiple possible event names to request device list
+        socket.emit('get-devices', {});
+        socket.emit('list-devices', {});
+        socket.emit('get-connected-devices', {});
+        socket.emit('devices', {});
+        socket.emit('clients', {});
+        socket.emit('room-info', {});
+        
+        // Set a timeout to collect any device events that might come
+        Future.delayed(Duration(seconds: 2), () {
+          _log('⏰ DEVICE DISCOVERY TIMEOUT - checking what we learned');
+        });
+      });
     });
 
     socket.on('share-request', (data) async {
@@ -89,6 +106,44 @@ class SocketService {
     // CRITICAL DEBUG: Log every single event to understand the server behavior
     socket.onAny((event, data) {
       _log('🔍 EVERY EVENT', {'event': event, 'data': data, 'ourId': socket.id});
+      
+      // Check for any events that might contain device/client information
+      if (event.contains('device') || event.contains('client') || event.contains('user') || 
+          event.contains('room') || event.contains('list')) {
+        _log('🔍 POTENTIAL DEVICE INFO EVENT', {'event': event, 'data': data});
+        
+        // Try to extract device information from any event
+        if (data is Map) {
+          _tryExtractDeviceInfo(event, data.cast<String, dynamic>());
+        } else if (data is List) {
+          _log('🔍 LIST EVENT DATA', {'event': event, 'listLength': data.length, 'items': data});
+          for (var item in data) {
+            if (item is Map) {
+              _tryExtractDeviceInfo(event, item.cast<String, dynamic>());
+            }
+          }
+        }
+      }
+    });
+    
+    // Handle specific device list response events
+    socket.on('devices', (data) {
+      _log('📋 DEVICES EVENT', data);
+      _handleDeviceListResponse(data);
+    });
+    
+    socket.on('clients', (data) {
+      _log('📋 CLIENTS EVENT', data);
+      _handleDeviceListResponse(data);
+    });
+    
+    socket.on('room-info', (data) {
+      _log('📋 ROOM-INFO EVENT', data);
+      if (data is Map && data['clients'] != null) {
+        _handleDeviceListResponse(data['clients']);
+      } else if (data is Map && data['devices'] != null) {
+        _handleDeviceListResponse(data['devices']);
+      }
     });
 
     socket.on('device-connected', (data) {
@@ -147,5 +202,55 @@ class SocketService {
     _log('🔄 MANUAL RECONNECTION ATTEMPT');
     socket.disconnect();
     socket.connect();
+  }
+  
+  void _tryExtractDeviceInfo(String event, Map<String, dynamic> data) {
+    final possibleIdKeys = ['id', 'socketId', 'clientId', 'deviceId', 'userId'];
+    
+    for (var idKey in possibleIdKeys) {
+      if (data[idKey] != null) {
+        final deviceId = data[idKey].toString();
+        if (deviceId != socket.id) {
+          _log('🔍 FOUND DEVICE INFO', {
+            'event': event,
+            'deviceId': deviceId,
+            'data': data
+          });
+          
+          // Simulate a device-connected event
+          if (onDeviceConnected != null) {
+            onDeviceConnected!(data);
+          }
+        }
+        break;
+      }
+    }
+  }
+  
+  void _handleDeviceListResponse(dynamic data) {
+    _log('📋 HANDLING DEVICE LIST RESPONSE', data);
+    
+    List<Map<String, dynamic>> devices = [];
+    
+    if (data is List) {
+      for (var item in data) {
+        if (item is Map) {
+          final deviceId = item['id'] ?? item['socketId'] ?? item['clientId'] ?? item['deviceId'];
+          if (deviceId != null && deviceId != socket.id) {
+            devices.add(item.cast<String, dynamic>());
+          }
+        }
+      }
+    } else if (data is Map) {
+      final deviceId = data['id'] ?? data['socketId'] ?? data['clientId'] ?? data['deviceId'];
+      if (deviceId != null && deviceId != socket.id) {
+        devices.add(data.cast<String, dynamic>());
+      }
+    }
+    
+    if (devices.isNotEmpty && onConnectedDevicesList != null) {
+      _log('📋 SENDING DEVICE LIST TO UI', devices);
+      onConnectedDevicesList!(devices);
+    }
   }
 }
