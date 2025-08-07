@@ -38,18 +38,50 @@ let devices = {};
 // Helper function to send devices list to a specific client
 function sendDevicesList(socket) {
   const otherDevices = Object.keys(devices).filter(id => id !== socket.id);
-  const devicesList = otherDevices.map(deviceId => ({
-    id: deviceId,
-    deviceId: deviceId,
-    socketId: deviceId,
-    readyToShare: devices[deviceId].readyToShare
-  }));
+  const devicesList = otherDevices.map(deviceId => {
+    const deviceInfo = devices[deviceId];
+    const deviceSocket = io.sockets.sockets.get(deviceId);
+    
+    // Extract device name from user agent or use a fallback
+    let deviceName = `Device ${deviceId.substring(0, 8)}`;
+    
+    if (deviceSocket && deviceSocket.request.headers['user-agent']) {
+      const userAgent = deviceSocket.request.headers['user-agent'];
+      
+      // Try to extract meaningful device info from user agent
+      if (userAgent.includes('Macintosh')) {
+        const macMatch = userAgent.match(/Macintosh[^)]*Intel[^)]*Mac OS X[^)]*\)/);
+        if (macMatch) {
+          deviceName = `MacBook-${deviceId.substring(0, 6)}`;
+        } else {
+          deviceName = `Mac-${deviceId.substring(0, 6)}`;
+        }
+      } else if (userAgent.includes('Windows')) {
+        deviceName = `Windows-${deviceId.substring(0, 6)}`;
+      } else if (userAgent.includes('iPhone')) {
+        deviceName = `iPhone-${deviceId.substring(0, 6)}`;
+      } else if (userAgent.includes('Android')) {
+        deviceName = `Android-${deviceId.substring(0, 6)}`;
+      } else if (userAgent.includes('Linux')) {
+        deviceName = `Linux-${deviceId.substring(0, 6)}`;
+      }
+    }
+    
+    return {
+      id: deviceId,
+      deviceId: deviceId,
+      socketId: deviceId,
+      name: deviceName,
+      readyToShare: deviceInfo.readyToShare
+    };
+  });
   
   log('📤 SENDING DEVICES LIST', {
     to: socket.id.substring(0, 8) + '...',
     devicesCount: devicesList.length,
     devices: devicesList.map(d => ({
       id: d.id.substring(0, 8) + '...',
+      name: d.name,
       readyToShare: d.readyToShare
     }))
   });
@@ -61,14 +93,17 @@ function sendDevicesList(socket) {
   
   // Also emit individual device-connected events for each existing device
   otherDevices.forEach(deviceId => {
+    const deviceInfo = devicesList.find(d => d.id === deviceId);
     log('📱 SENDING INDIVIDUAL device-connected', {
       to: socket.id.substring(0, 8) + '...',
-      deviceId: deviceId.substring(0, 8) + '...'
+      deviceId: deviceId.substring(0, 8) + '...',
+      deviceName: deviceInfo.name
     });
     socket.emit('device-connected', { 
       id: deviceId, 
       deviceId: deviceId,
-      socketId: deviceId 
+      socketId: deviceId,
+      name: deviceInfo.name
     });
   });
 }
@@ -111,17 +146,49 @@ io.on('connection', (socket) => {
     log('📝 DEVICE REGISTRATION', {
       socketId: socket.id.substring(0, 8) + '...',
       data: data,
-      previouslyRegistered: !!devices[socket.id]
+      previouslyRegistered: !!devices[socket.id],
+      userAgent: socket.request.headers['user-agent']
     });
     
     devices[socket.id] = { readyToShare: false, signalingData: null };
     
+    // Extract device name from user agent
+    let deviceName = `Device ${socket.id.substring(0, 8)}`;
+    
+    if (socket.request.headers['user-agent']) {
+      const userAgent = socket.request.headers['user-agent'];
+      
+      // Try to extract meaningful device info from user agent
+      if (userAgent.includes('Macintosh')) {
+        const macMatch = userAgent.match(/Macintosh[^)]*Intel[^)]*Mac OS X[^)]*\)/);
+        if (macMatch) {
+          deviceName = `MacBook-${socket.id.substring(0, 6)}`;
+        } else {
+          deviceName = `Mac-${socket.id.substring(0, 6)}`;
+        }
+      } else if (userAgent.includes('Windows')) {
+        deviceName = `Windows-${socket.id.substring(0, 6)}`;
+      } else if (userAgent.includes('iPhone')) {
+        deviceName = `iPhone-${socket.id.substring(0, 6)}`;
+      } else if (userAgent.includes('Android')) {
+        deviceName = `Android-${socket.id.substring(0, 6)}`;
+      } else if (userAgent.includes('Linux')) {
+        deviceName = `Linux-${socket.id.substring(0, 6)}`;
+      }
+    }
+    
     log('📢 BROADCASTING device-connected', {
       newDeviceId: socket.id.substring(0, 8) + '...',
+      deviceName: deviceName,
       broadcastingTo: Object.keys(devices).filter(id => id !== socket.id).length + ' other clients'
     });
     
-    socket.broadcast.emit('device-connected', { deviceId: socket.id });
+    socket.broadcast.emit('device-connected', { 
+      deviceId: socket.id,
+      id: socket.id,
+      socketId: socket.id,
+      name: deviceName
+    });
     
     // Immediately send existing devices list to the newly registered client
     log('📋 SENDING EXISTING DEVICES TO NEW CLIENT', {
