@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:mime/mime.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_clipboard/services/windows_clipboard_debug.dart';
@@ -251,47 +250,59 @@ class FileTransferService {
         _showFileReceivedMessage(files.length, 'native clipboard - ready to paste!');
         return;
       } else {
-        _log('⚠️ NATIVE CLIPBOARD FAILED, FALLING BACK TO FILE PATHS');
+        _log('⚠️ NATIVE CLIPBOARD FAILED, PROMPTING USER FOR DOWNLOAD LOCATION');
       }
       
-      // Fallback: Create temporary directory for received files and set paths
-      final tempDir = await getTemporaryDirectory();
-      final receivedDir = Directory('${tempDir.path}/shared_clipboard_received');
-      if (!await receivedDir.exists()) {
-        await receivedDir.create(recursive: true);
-      }
-      
-      List<String> filePaths = [];
+      // Fallback: Prompt user to save each file to their chosen location
+      List<String> savedFilePaths = [];
       
       for (FileData fileData in files) {
-        // Create file in temp directory
-        final filePath = '${receivedDir.path}/${fileData.name}';
-        final file = File(filePath);
-        
-        // Write file content
-        await file.writeAsBytes(fileData.content);
-        
-        // Verify checksum
-        final writtenBytes = await file.readAsBytes();
-        final writtenChecksum = sha256.convert(writtenBytes).toString();
-        
-        if (writtenChecksum != fileData.checksum) {
-          _log('❌ CHECKSUM MISMATCH', fileData.name);
-          await file.delete();
+        // Verify checksum before prompting user
+        final calculatedChecksum = sha256.convert(fileData.content).toString();
+        if (calculatedChecksum != fileData.checksum) {
+          _log('❌ CHECKSUM MISMATCH FOR FILE', fileData.name);
           continue;
         }
         
-        filePaths.add(filePath);
-        _log('✅ FILE WRITTEN', '${fileData.name} (${fileData.size} bytes)');
+        // Prompt user to save file
+        final String? outputFile = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save received file: ${fileData.name}',
+          fileName: fileData.name,
+          type: FileType.any,
+        );
+        
+        if (outputFile != null) {
+          try {
+            final file = File(outputFile);
+            await file.writeAsBytes(fileData.content);
+            
+            // Verify the written file
+            final writtenBytes = await file.readAsBytes();
+            final writtenChecksum = sha256.convert(writtenBytes).toString();
+            
+            if (writtenChecksum != fileData.checksum) {
+              _log('❌ CHECKSUM MISMATCH AFTER WRITE', fileData.name);
+              await file.delete();
+              continue;
+            }
+            
+            savedFilePaths.add(outputFile);
+            _log('✅ FILE SAVED TO USER LOCATION', '${fileData.name} → $outputFile');
+          } catch (e) {
+            _log('❌ ERROR SAVING FILE', '${fileData.name}: $e');
+          }
+        } else {
+          _log('ℹ️ USER CANCELLED SAVE', fileData.name);
+        }
       }
       
-      if (filePaths.isNotEmpty) {
-        // Fallback: Set file paths to clipboard as text
-        final pathsText = filePaths.join('\n');
+      if (savedFilePaths.isNotEmpty) {
+        // Set file paths to clipboard as text for easy access
+        final pathsText = savedFilePaths.join('\n');
         await Clipboard.setData(ClipboardData(text: pathsText));
-        _log('📋 FALLBACK: FILE PATHS SET TO CLIPBOARD AS TEXT', '${filePaths.length} files');
+        _log('📋 SAVED FILE PATHS SET TO CLIPBOARD', '${savedFilePaths.length} files');
         
-        _showFileReceivedMessage(files.length, receivedDir.path);
+        _showFileReceivedMessage(savedFilePaths.length, 'user-selected locations');
       }
     } catch (e) {
       _log('❌ ERROR SETTING FILES TO CLIPBOARD', e.toString());
