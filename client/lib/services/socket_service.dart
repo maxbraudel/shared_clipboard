@@ -62,7 +62,9 @@ class SocketService {
 
     socket.on('share-request', (data) {
       _log('📥 SHARE REQUEST RECEIVED', data);
-      _webrtcService.createOffer(null); // Content will be sent via data channel
+      // Extract the sender ID and pass it to the WebRTC service
+      String senderId = data['from'] ?? 'unknown';
+      _webrtcService.createOffer(null, senderId); // Content will be sent via data channel
     });
 
     socket.on('webrtc-signal', (data) {
