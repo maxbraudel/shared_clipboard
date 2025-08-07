@@ -237,9 +237,15 @@ class FileTransferService {
     }
   }
 
-  // Set files to clipboard (create temp files and set paths)
+  // Set files to clipboard (put files directly in system clipboard for proper paste behavior)
   Future<void> _setFiles(List<FileData> files) async {
     try {
+      _log('📁 SETTING FILES TO SYSTEM CLIPBOARD', '${files.length} files');
+      
+      // For now, we'll use the fallback method until native clipboard is fully integrated
+      // TODO: Replace with native clipboard when ready
+      _log('⚠️ USING FALLBACK METHOD - Native clipboard integration pending');
+      
       // Create temporary directory for received files
       final tempDir = await getTemporaryDirectory();
       final receivedDir = Directory('${tempDir.path}/shared_clipboard_received');
@@ -272,12 +278,13 @@ class FileTransferService {
       }
       
       if (filePaths.isNotEmpty) {
-        // Set file paths to clipboard as text (user can then navigate to open them)
+        // For now: Set file paths to clipboard as text 
+        // Later: This will be replaced with native file clipboard that puts actual files
         final pathsText = filePaths.join('\n');
         await Clipboard.setData(ClipboardData(text: pathsText));
-        _log('✅ FILE PATHS SET TO CLIPBOARD', '${filePaths.length} files');
+        _log('✅ FILE PATHS SET TO CLIPBOARD (TEMPORARY BEHAVIOR)', '${filePaths.length} files');
         
-        // Also show a notification-style message
+        // Show improved message explaining the current behavior
         _showFileReceivedMessage(files.length, receivedDir.path);
       }
     } catch (e) {
@@ -288,8 +295,9 @@ class FileTransferService {
   void _showFileReceivedMessage(int fileCount, String dirPath) {
     print('\n🎉 FILES RECEIVED SUCCESSFULLY! 🎉');
     print('📁 $fileCount file(s) saved to: $dirPath');
-    print('📋 File paths copied to clipboard');
-    print('💡 You can now paste to see the file paths or navigate to the folder\n');
+    print('📋 CURRENT BEHAVIOR: File paths copied to clipboard as text');
+    print('💡 To access files: Paste to see file paths or navigate to the folder');
+    print('🔄 FUTURE: Files will be directly pasteable to any location (like copy/paste from Finder)\n');
   }
 
   // Serialize clipboard content for transfer
