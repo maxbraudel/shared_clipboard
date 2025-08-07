@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:shared_clipboard/services/file_transfer_service.dart';
 
 class WebRTCService {
   RTCPeerConnection? _peerConnection;
@@ -9,6 +10,7 @@ class WebRTCService {
   bool _isInitialized = false;
   String? _pendingClipboardContent;
   bool _isResetting = false; // Prevent multiple resets
+  final FileTransferService _fileTransferService = FileTransferService();
   
   // Callback to send signals back to socket service
   Function(String to, dynamic signal)? onSignalGenerated;
@@ -101,12 +103,22 @@ class WebRTCService {
     };
 
     _dataChannel?.onMessage = (message) {
-      _log('📥 RECEIVED DATA MESSAGE (RECEIVER ROLE)', message.text);
+      _log('📥 RECEIVED DATA MESSAGE (RECEIVER ROLE)', '${message.text.length} bytes');
       try {
-        Clipboard.setData(ClipboardData(text: message.text));
-        _log('📋 CLIPBOARD UPDATED SUCCESSFULLY');
+        // Deserialize the received content
+        final clipboardContent = _fileTransferService.deserializeClipboardContent(message.text);
+        
+        if (clipboardContent.isFiles) {
+          _log('📁 RECEIVED FILES', '${clipboardContent.files.length} files');
+          _fileTransferService.setClipboardContent(clipboardContent);
+          _log('✅ FILES SET TO CLIPBOARD/TEMP FOLDER');
+        } else {
+          _log('📝 RECEIVED TEXT', clipboardContent.text);
+          Clipboard.setData(ClipboardData(text: clipboardContent.text));
+          _log('📋 TEXT CLIPBOARD UPDATED SUCCESSFULLY');
+        }
       } catch (e) {
-        _log('❌ ERROR UPDATING CLIPBOARD', e.toString());
+        _log('❌ ERROR PROCESSING RECEIVED DATA', e.toString());
       }
     };
   }
@@ -216,13 +228,18 @@ class WebRTCService {
         _log('🎯 CREATING OFFER FOR PEER', peerId);
       }
       
-      // Read current clipboard content
+      // Read current clipboard content (text or files)
       try {
         _log('📋 READING CLIPBOARD FOR OFFER');
-        final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-        if (clipboardData != null && clipboardData.text != null) {
-          _pendingClipboardContent = clipboardData.text;
-          _log('📋 CLIPBOARD CONTENT TO SHARE', clipboardData.text);
+        final clipboardContent = await _fileTransferService.getClipboardContent();
+        
+        if (clipboardContent.isFiles) {
+          _log('📁 FOUND FILES IN CLIPBOARD', '${clipboardContent.files.length} files');
+          _pendingClipboardContent = _fileTransferService.serializeClipboardContent(clipboardContent);
+          _log('� FILES SERIALIZED FOR TRANSFER', '${_pendingClipboardContent!.length} bytes');
+        } else if (clipboardContent.text.isNotEmpty) {
+          _log('📝 FOUND TEXT IN CLIPBOARD', clipboardContent.text);
+          _pendingClipboardContent = _fileTransferService.serializeClipboardContent(clipboardContent);
         } else {
           _log('❌ NO CLIPBOARD CONTENT TO SHARE');
         }

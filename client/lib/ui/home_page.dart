@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_clipboard/services/socket_service.dart';
 import 'package:shared_clipboard/services/webrtc_service.dart';
+import 'package:shared_clipboard/services/file_transfer_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -14,6 +15,7 @@ class _HomePageState extends State<HomePage> {
   String _status = 'Initializing...';
   late SocketService _socketService;
   late WebRTCService _webrtcService;
+  late FileTransferService _fileTransferService;
   bool _isInitialized = false;
 
   @override
@@ -29,6 +31,7 @@ class _HomePageState extends State<HomePage> {
       // Initialize services
       _socketService = SocketService();
       _webrtcService = WebRTCService();
+      _fileTransferService = FileTransferService();
       
       // Initialize WebRTC first
       print('🔧 INITIALIZING WEBRTC SERVICE');
@@ -100,6 +103,18 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 10),
               ElevatedButton.icon(
                 onPressed: _isInitialized ? () {
+                  _shareFiles();
+                } : null,
+                icon: const Icon(Icons.file_upload),
+                label: const Text('Share Files'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  backgroundColor: Colors.green,
+                ),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                onPressed: _isInitialized ? () {
                   _requestClipboard();
                 } : null,
                 icon: const Icon(Icons.download),
@@ -113,6 +128,39 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+  }
+
+  void _shareFiles() async {
+    if (!_isInitialized) return;
+    
+    setState(() {
+      _status = 'Selecting files to share...';
+    });
+    
+    try {
+      print('📁 OPENING FILE PICKER FOR SHARING');
+      final clipboardContent = await _fileTransferService.selectFilesToShare();
+      
+      if (clipboardContent.isFiles && clipboardContent.files.isNotEmpty) {
+        print('📤 FILES SELECTED: ${clipboardContent.files.length} files');
+        print('📤 SENDING SHARE-READY TO SERVER');
+        _socketService.sendShareReady();
+        setState(() {
+          _status = 'Ready to share ${clipboardContent.files.length} files: ${clipboardContent.files.map((f) => f.name).join(', ')}';
+        });
+        print("📋 FILES READY TO SHARE: ${clipboardContent.files.map((f) => f.name).join(', ')}");
+      } else {
+        setState(() {
+          _status = 'No files selected';
+        });
+        print('❌ NO FILES SELECTED');
+      }
+    } catch (e) {
+      setState(() {
+        _status = 'Error selecting files: $e';
+      });
+      print('❌ FILE SELECTION ERROR: $e');
+    }
   }
 
   void _shareClipboard() async {
