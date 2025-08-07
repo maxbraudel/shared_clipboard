@@ -111,17 +111,42 @@ class WebRTCService {
     }
   }
 
+  Future<void> _resetConnection() async {
+    _log('🔄 RESETTING PEER CONNECTION FOR NEW SHARE');
+    
+    // Close existing data channel
+    if (_dataChannel != null) {
+      _log('📡 CLOSING EXISTING DATA CHANNEL');
+      _dataChannel?.close();
+      _dataChannel = null;
+    }
+    
+    // Close existing peer connection
+    if (_peerConnection != null) {
+      _log('🔗 CLOSING EXISTING PEER CONNECTION');
+      _peerConnection?.close();
+      _peerConnection = null;
+    }
+    
+    // Clear any pending content and peer ID
+    _pendingClipboardContent = null;
+    _peerId = null;
+    _isInitialized = false;
+    
+    // Reinitialize
+    await init();
+    _log('✅ PEER CONNECTION RESET COMPLETE');
+  }
+
   Future<void> createOffer(String? peerId) async {
     try {
       _log('🎯 createOffer CALLED', peerId);
       
-      if (!_isInitialized) {
-        _log('⚠️ WebRTC not initialized, initializing now');
-        await init();
-      }
+      // Reset connection state for clean start
+      await _resetConnection();
       
       if (_peerConnection == null) {
-        _log('❌ ERROR: PeerConnection is null, cannot create offer');
+        _log('❌ ERROR: PeerConnection is null after reset, cannot create offer');
         return;
       }
       
@@ -179,16 +204,16 @@ class WebRTCService {
   }
 
   Future<void> handleOffer(dynamic offer, String from) async {
-    if (!_isInitialized) {
-      await init();
-    }
+    _log('📥 HANDLING OFFER FROM', from);
+    
+    // Reset connection state for clean start
+    await _resetConnection();
     
     if (_peerConnection == null) {
-      _log('❌ ERROR: PeerConnection is null, cannot handle offer');
+      _log('❌ ERROR: PeerConnection is null after reset, cannot handle offer');
       return;
     }
     
-    _log('📥 HANDLING OFFER FROM', from);
     _peerId = from;
     await _peerConnection?.setRemoteDescription(RTCSessionDescription(offer['sdp'], offer['type']));
     RTCSessionDescription description = await _peerConnection!.createAnswer();
