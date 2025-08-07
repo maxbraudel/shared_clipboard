@@ -305,27 +305,66 @@ class WebRTCService {
     _log('📥 HANDLING OFFER FROM', from);
     _log('🔍 CURRENT STATE - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
     
-    // Reset connection state for clean start
-    await _resetConnection();
-    
-    if (_peerConnection == null) {
-      _log('❌ ERROR: PeerConnection is null after reset, cannot handle offer');
-      return;
-    }
-    
-    _peerId = from;
-    await _peerConnection?.setRemoteDescription(RTCSessionDescription(offer['sdp'], offer['type']));
-    _remoteDescriptionSet = true;
-    _log('✅ REMOTE DESCRIPTION SET - Flag: $_remoteDescriptionSet');
-    
-    // Process any queued candidates
-    await _processQueuedCandidates();
-    
-    RTCSessionDescription description = await _peerConnection!.createAnswer();
-    await _peerConnection!.setLocalDescription(description);
-    _log('📤 SENDING ANSWER');
-    if (onSignalGenerated != null) {
-      onSignalGenerated!(_peerId!, {'type': 'answer', 'sdp': description.sdp});
+    try {
+      // Reset connection state for clean start
+      await _resetConnection();
+      
+      if (_peerConnection == null) {
+        _log('❌ ERROR: PeerConnection is null after reset, cannot handle offer');
+        return;
+      }
+      
+      _peerId = from;
+      
+      // Set remote description with error handling
+      _log('📡 SETTING REMOTE DESCRIPTION');
+      await _peerConnection?.setRemoteDescription(RTCSessionDescription(offer['sdp'], offer['type']));
+      _remoteDescriptionSet = true;
+      _log('✅ REMOTE DESCRIPTION SET - Flag: $_remoteDescriptionSet');
+      
+      // Process any queued candidates
+      await _processQueuedCandidates();
+      
+      // Create answer with error handling and retry logic
+      _log('📡 CREATING ANSWER');
+      RTCSessionDescription? description;
+      int retryCount = 0;
+      
+      while (description == null && retryCount < 3) {
+        try {
+          // Small delay to ensure peer connection is fully ready
+          if (retryCount > 0) {
+            _log('🔄 RETRYING CREATE ANSWER - Attempt ${retryCount + 1}');
+            await Future.delayed(Duration(milliseconds: 100));
+          }
+          
+          description = await _peerConnection!.createAnswer();
+          _log('✅ ANSWER CREATED SUCCESSFULLY');
+        } catch (e) {
+          retryCount++;
+          _log('❌ CREATE ANSWER FAILED - Attempt $retryCount', e.toString());
+          
+          if (retryCount >= 3) {
+            _log('❌ FAILED TO CREATE ANSWER AFTER 3 ATTEMPTS');
+            return;
+          }
+        }
+      }
+      
+      if (description != null) {
+        await _peerConnection!.setLocalDescription(description);
+        _log('📤 SENDING ANSWER');
+        if (onSignalGenerated != null) {
+          onSignalGenerated!(_peerId!, {'type': 'answer', 'sdp': description.sdp});
+        }
+      }
+    } catch (e, stackTrace) {
+      _log('❌ CRITICAL ERROR IN HANDLE OFFER', e.toString());
+      _log('❌ STACK TRACE', stackTrace.toString());
+      
+      // Reset state on error
+      _remoteDescriptionSet = false;
+      _pendingCandidates.clear();
     }
   }
 
@@ -377,11 +416,13 @@ class WebRTCService {
       _log('✅ ICE CANDIDATE ADDED SUCCESSFULLY');
     } catch (e) {
       _log('❌ ERROR ADDING ICE CANDIDATE', e.toString());
-      // If adding fails due to remote description being null, queue it
-      if (e.toString().contains('remote description was null')) {
-        _log('📦 QUEUEING CANDIDATE DUE TO ERROR');
-        _remoteDescriptionSet = false;
+      // Only queue if the error is specifically about remote description
+      if (e.toString().contains('remote description was null') || 
+          e.toString().contains('remote description')) {
+        _log('📦 QUEUEING CANDIDATE DUE TO REMOTE DESCRIPTION ERROR');
         _pendingCandidates.add(iceCandidate);
+      } else {
+        _log('❌ IGNORING CANDIDATE DUE TO OTHER ERROR');
       }
     }
   }

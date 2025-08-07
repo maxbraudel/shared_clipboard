@@ -81,7 +81,7 @@ class SocketService {
       }
     });
 
-    socket.on('webrtc-signal', (data) {
+    socket.on('webrtc-signal', (data) async {
       _log('🔄 WEBRTC SIGNAL RECEIVED', {
         'from': data['from'],
         'signalType': data['signal']['type']
@@ -89,13 +89,13 @@ class SocketService {
       
       if (data['signal']['type'] == 'offer') {
         _log('📥 PROCESSING OFFER SIGNAL');
-        _webrtcService.handleOffer(data['signal'], data['from']);
+        await _webrtcService.handleOffer(data['signal'], data['from']);
       } else if (data['signal']['type'] == 'answer') {
         _log('📥 PROCESSING ANSWER SIGNAL');
-        _webrtcService.handleAnswer(data['signal']);
+        await _webrtcService.handleAnswer(data['signal']);
       } else if (data['signal']['type'] == 'candidate') {
         _log('📥 PROCESSING CANDIDATE SIGNAL');
-        _webrtcService.handleCandidate(data['signal']);
+        await _webrtcService.handleCandidate(data['signal']);
       }
     });
 
