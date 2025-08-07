@@ -153,6 +153,11 @@ class SocketService {
           event.contains('room') || event.contains('list') || event.contains('hello')) {
         _log('🔍 POTENTIAL DEVICE INFO EVENT', {'event': event, 'data': data});
         
+        // Skip disconnection events here - they are handled by their specific handlers
+        if (event == 'device-disconnected') {
+          return;
+        }
+        
         // Try to extract device information from any event
         if (data is Map) {
           _tryExtractDeviceInfo(event, data.cast<String, dynamic>());

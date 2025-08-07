@@ -80,7 +80,7 @@ class _HomePageState extends State<HomePage> {
       
       _socketService.onDeviceDisconnected = (device) {
         setState(() {
-          final deviceId = device['id'] ?? device['socketId'] ?? 'unknown';
+          final deviceId = device['deviceId'] ?? device['id'] ?? device['socketId'] ?? 'unknown';
           _connectedDevices.removeWhere((d) => d['id'] == deviceId);
         });
       };
