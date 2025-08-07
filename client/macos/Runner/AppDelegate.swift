@@ -17,11 +17,13 @@ class AppDelegate: FlutterAppDelegate {
     // Register native file clipboard plugin using runtime lookup
     if let controller = mainFlutterWindow?.contentViewController as? FlutterViewController {
       // Use runtime to call the Objective-C plugin registration
-      let pluginClass = NSClassFromString("NativeFileClipboardPlugin")
-      if let pluginClass = pluginClass as? NSObject.Type {
-        if pluginClass.responds(to: Selector(("registerWithRegistrar:"))) {
-          let registrar = controller.registrar(forPlugin: "NativeFileClipboardPlugin")
-          pluginClass.perform(Selector(("registerWithRegistrar:")), with: registrar)
+      if let pluginClass: AnyClass = NSClassFromString("NativeFileClipboardPlugin") {
+        let registrar = controller.registrar(forPlugin: "NativeFileClipboardPlugin")
+        
+        // Use performSelector to call the register method - use the immediate version
+        let selector = NSSelectorFromString("registerWithRegistrar:")
+        if pluginClass.responds(to: selector) {
+          let _ = pluginClass.perform(selector, with: registrar, afterDelay: 0)
           print("✅ Native File Clipboard Plugin registered successfully via runtime")
         } else {
           print("❌ Plugin class doesn't respond to registerWithRegistrar:")
