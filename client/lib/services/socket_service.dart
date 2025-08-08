@@ -118,6 +118,14 @@ class SocketService {
     socket.on('share-request', (data) async {
       _log('📥 SHARE REQUEST RECEIVED', data);
       String requesterId = data['from'] ?? 'unknown';
+      // Guard: if server mistakenly routes our own request back to us, ignore
+      if (requesterId == socket.id) {
+        _log('🚫 IGNORING SELF SHARE-REQUEST', {
+          'requesterId': requesterId,
+          'ourId': socket.id,
+        });
+        return;
+      }
       _log('📤 CREATING OFFER TO SEND CLIPBOARD TO REQUESTER', requesterId);
       
       try {
@@ -134,6 +142,14 @@ class SocketService {
         'from': data['from'],
         'signalType': data['signal']['type']
       });
+      // Guard: ignore echo of our own signals (can happen if server pairs us with ourselves)
+      if (data is Map && data['from'] == socket.id) {
+        _log('🚫 IGNORING SELF-GENERATED WEBRTC SIGNAL ECHO', {
+          'from': data['from'],
+          'ourId': socket.id,
+        });
+        return;
+      }
       
       if (data['signal']['type'] == 'offer') {
         await _webrtcService.handleOffer(data['signal'], data['from']);
@@ -281,6 +297,15 @@ class SocketService {
       'to': to,
       'signalType': signal['type'],
     });
+    // Guard: do not send to ourselves
+    if (to == socket.id) {
+      _log('🚫 BLOCKED SENDING SIGNAL TO SELF', {
+        'to': to,
+        'ourId': socket.id,
+        'signalType': signal['type'],
+      });
+      return;
+    }
     
     socket.emit('webrtc-signal', {'to': to, 'signal': signal});
   }
