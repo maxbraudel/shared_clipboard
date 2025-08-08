@@ -2,8 +2,6 @@ import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io';
 import 'dart:math';
-// Windows taskbar progress (used on Windows only)
-import 'package:windows_taskbar/windows_taskbar.dart';
 
 class TrayService {
   static final SystemTray _systemTray = SystemTray();
@@ -118,34 +116,6 @@ class TrayService {
     } catch (e) {
       // Safe to ignore if not supported
       print("Failed to update title: $e");
-    }
-  }
-
-  static Future<void> showDownloadProgress(int received, int total) async {
-    final pct = total > 0 ? (received / total).clamp(0.0, 1.0) : 0.0;
-    final percentInt = (pct * 100).round();
-    final tooltip = 'Downloading... $percentInt%';
-    await updateTooltip(tooltip);
-    await updateTitle('Shared Clipboard ($percentInt%)');
-
-    if (Platform.isWindows) {
-      try {
-        await WindowsTaskbar.setProgress(received, max(total, 1));
-      } catch (e) {
-        // Ignore if API unavailable
-      }
-    }
-  }
-
-  static Future<void> clearDownloadProgress() async {
-    await updateTooltip('Shared Clipboard - Click to show window');
-    await updateTitle('Shared Clipboard');
-    if (Platform.isWindows) {
-      try {
-        await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
-      } catch (e) {
-        // Ignore if API unavailable
-      }
     }
   }
 }

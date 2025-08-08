@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:shared_clipboard/services/tray_service.dart';
+
 
 class WebRTCService {
   RTCPeerConnection? _peerConnection;
@@ -271,8 +271,6 @@ class WebRTCService {
               c?.completeError(StateError('Receiver cancelled'));
               _abortFileSession(sessionId);
               _log('🛑 RECEIVED CANCEL, ABORTING SESSION', sessionId);
-              // Clear any progress UI
-              TrayService.clearDownloadProgress();
               return;
             }
             if (mode == 'file_chunk' && sessionId != null) {
@@ -922,16 +920,6 @@ class WebRTCService {
       if (incoming.received % (1024 * 1024) < bytes.length) { // every ~1MB
         _log('⬇️ PROGRESS', {'file': incoming.name, 'received': incoming.received, 'of': incoming.size});
       }
-      // Update overall session progress in tray/taskbar
-      int total = 0;
-      int receivedTotal = 0;
-      for (final f in session.files) {
-        total += (f.size > 0 ? f.size : 0);
-        receivedTotal += f.received;
-      }
-      // If total is unknown (0), approximate by receivedTotal to show indeterminate growth
-      if (total <= 0) total = receivedTotal == 0 ? 1 : receivedTotal;
-      TrayService.showDownloadProgress(receivedTotal, total);
     } catch (e) {
       _log('❌ ERROR WRITING FILE CHUNK', {'sessionId': sessionId, 'index': fileIndex, 'error': e.toString()});
     }
@@ -994,8 +982,6 @@ class WebRTCService {
       }
       await _fileTransferService.setClipboardContent(ClipboardContent.files(filesForClipboard));
       _log('🎉 FILE SESSION FINALIZED', {'sessionId': sessionId, 'files': filesForClipboard.length, 'verified': allOk});
-      // Clear progress UI upon completion
-      await TrayService.clearDownloadProgress();
     } catch (e) {
       _log('❌ ERROR FINALIZING FILE SESSION', e.toString());
     }
@@ -1017,8 +1003,6 @@ class WebRTCService {
         } catch (_) {}
       }
       _log('🧹 FILE SESSION ABORTED AND CLEANED', {'sessionId': sessionId});
-      // Clear progress UI upon abort
-      await TrayService.clearDownloadProgress();
     } catch (e) {
       _log('❌ ERROR ABORTING FILE SESSION', e.toString());
     }
