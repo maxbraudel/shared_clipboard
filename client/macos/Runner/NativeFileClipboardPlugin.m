@@ -1,5 +1,6 @@
 #import <FlutterMacOS/FlutterMacOS.h>
 #import <AppKit/AppKit.h>
+#import <CoreServices/CoreServices.h>
 #import "NativeFileClipboardPlugin.h"
 
 @implementation NativeFileClipboardPlugin
@@ -19,6 +20,8 @@
     [self putFilesToClipboard:call.arguments result:result];
   } else if ([@"clearClipboard" isEqualToString:call.method]) {
     [self clearClipboard:result];
+  } else if ([@"getFilesFromClipboard" isEqualToString:call.method]) {
+    [self getFilesFromClipboard:result];
   } else {
     result(FlutterMethodNotImplemented);
   }
@@ -82,6 +85,57 @@
   [pasteboard clearContents];
   
   result(@YES);
+}
+
+- (void)getFilesFromClipboard:(FlutterResult)result {
+  NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+  NSLog(@"[NativeFileClipboard] Reading file URLs from pasteboard");
+  
+  NSMutableArray<NSString*>* paths = [[NSMutableArray alloc] init];
+  
+  // 1) Prefer modern file URLs via readObjectsForClasses
+  NSArray* classes = @[[NSURL class]];
+  NSDictionary* options = @{ NSPasteboardURLReadingFileURLsOnlyKey: @YES };
+  BOOL canRead = [pasteboard canReadItemWithDataConformingToTypes:@[(NSString*)kUTTypeFileURL, @"public.file-url"]];
+  if (canRead) {
+    NSArray* urls = [pasteboard readObjectsForClasses:classes options:options];
+    if (urls && [urls count] > 0) {
+      for (NSURL* url in urls) {
+        if (url.isFileURL && url.path) {
+          [paths addObject:url.path];
+        }
+      }
+    }
+  }
+  
+  // 2) Fallback: iterate items for public.file-url strings
+  if ([paths count] == 0) {
+    for (NSPasteboardItem* item in [pasteboard pasteboardItems]) {
+      NSString* fileUrlString = [item stringForType:NSPasteboardTypeFileURL];
+      if (fileUrlString) {
+        NSURL* url = [NSURL URLWithString:fileUrlString];
+        if (url.isFileURL && url.path) {
+          [paths addObject:url.path];
+        }
+      }
+    }
+  }
+  
+  // 3) Legacy fallback: NSFilenamesPboardType (array of file paths)
+  if ([paths count] == 0) {
+    NSPasteboardType legacyType = @"NSFilenamesPboardType";
+    id plist = [pasteboard propertyListForType:legacyType];
+    if ([plist isKindOfClass:[NSArray class]]) {
+      for (id obj in (NSArray*)plist) {
+        if ([obj isKindOfClass:[NSString class]]) {
+          [paths addObject:(NSString*)obj];
+        }
+      }
+    }
+  }
+  
+  NSLog(@"[NativeFileClipboard] Found %lu file paths", (unsigned long)[paths count]);
+  result(paths);
 }
 
 @end

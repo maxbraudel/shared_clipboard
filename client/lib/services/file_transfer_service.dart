@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_clipboard/services/windows_clipboard_debug.dart';
 import 'package:shared_clipboard/services/windows_file_clipboard.dart';
+import 'package:shared_clipboard/services/native_file_clipboard.dart';
 // Removed native macOS pasteboard integration
 
 class FileTransferService {
@@ -114,6 +115,15 @@ class FileTransferService {
   // Get clipboard content (text or files)
   Future<ClipboardContent> getClipboardContent() async {
     try {
+      // On macOS, prefer native file URLs from pasteboard when present.
+      if (Platform.isMacOS) {
+        final macPaths = await NativeFileClipboard.getFilesFromClipboard();
+        _log('🍎 macOS pasteboard file URLs', {'count': macPaths.length});
+        if (macPaths.isNotEmpty) {
+          return await _processFilePaths(macPaths.join('\n'));
+        }
+      }
+      
       // First, let's investigate what's actually in the Windows clipboard
       if (Platform.isWindows) {
         WindowsClipboardDebug.investigateClipboard();

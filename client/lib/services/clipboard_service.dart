@@ -43,10 +43,6 @@ class ClipboardService {
   void shareClipboard() async {
     print("Sharing clipboard content");
     _socketService.sendShareReady();
-    final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-    if (clipboardData != null && clipboardData.text != null) {
-      _webrtcService.createOffer(clipboardData.text!);
-    }
   }
 
   void requestClipboard() {

@@ -14,6 +14,8 @@ public class NativeFileClipboardPlugin: NSObject, FlutterPlugin {
       putFilesToClipboard(call, result: result)
     case "clearClipboard":
       clearClipboard(result)
+    case "getFilesFromClipboard":
+      getFilesFromClipboard(result)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -61,5 +63,30 @@ public class NativeFileClipboardPlugin: NSObject, FlutterPlugin {
     let pasteboard = NSPasteboard.general
     pasteboard.clearContents()
     result(true)
+  }
+
+  private func getFilesFromClipboard(_ result: @escaping FlutterResult) {
+    let pasteboard = NSPasteboard.general
+    // Prefer modern URL reading API
+    let classes: [AnyClass] = [NSURL.self]
+    let options: [NSPasteboard.ReadingOptionKey: Any] = [
+      .urlReadingFileURLsOnly: true
+    ]
+
+    var paths: [String] = []
+
+    if let urls = pasteboard.readObjects(forClasses: classes, options: options) as? [URL], !urls.isEmpty {
+      paths = urls.map { $0.path }
+    } else if let items = pasteboard.pasteboardItems {
+      // Fallback: iterate items for fileURL type strings
+      for item in items {
+        if let fileUrlString = item.string(forType: .fileURL), let url = URL(string: fileUrlString) {
+          paths.append(url.path)
+        }
+      }
+    }
+
+    print("📋 macOS pasteboard file paths count: \(paths.count)")
+    result(paths)
   }
 }

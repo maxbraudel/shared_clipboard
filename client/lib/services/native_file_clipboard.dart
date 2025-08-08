@@ -15,6 +15,52 @@ class NativeFileClipboard {
     }
   }
 
+  /// Debug utility: dumps detailed clipboard info from macOS into the terminal logs
+  static Future<void> debugDumpClipboard() async {
+    if (!Platform.isMacOS) return;
+    _log('🐞 DEBUG DUMP — BEGIN');
+    try {
+      // 1) Raw clipboard info (type codes)
+      final info = await Process.run('osascript', ['-e', 'clipboard info']);
+      _log('clipboard info', info.stdout);
+    } catch (e) {
+      _log('clipboard info error', e.toString());
+    }
+    try {
+      // 2) Attempt to coerce clipboard to list and show class + possible POSIX path per item
+      const classesScript = r'''
+        try
+          set itemsList to the clipboard as list
+          set out to ""
+          repeat with it in itemsList
+            set cls to (class of it) as text
+            set p to ""
+            try
+              set p to POSIX path of it
+            end try
+            set out to out & cls & ": " & p & "\n"
+          end repeat
+          return out
+        on error
+          return "(cannot coerce clipboard to list)"
+        end try
+      ''';
+      final classes = await Process.run('osascript', ['-e', classesScript]);
+      _log('clipboard as list — classes/paths', classes.stdout);
+    } catch (e) {
+      _log('clipboard as list error', e.toString());
+    }
+    try {
+      // 3) Plain text view via pbpaste (may be empty if not textual)
+      final txt = await Process.run('pbpaste', ['-Prefer', 'txt']);
+      final preview = (txt.stdout is String) ? (txt.stdout as String) : '';
+      _log('pbpaste -Prefer txt (first 500 chars)', preview.length > 500 ? preview.substring(0, 500) : preview);
+    } catch (e) {
+      _log('pbpaste error', e.toString());
+    }
+    _log('🐞 DEBUG DUMP — END');
+  }
+
   /// Puts files into the system clipboard so they can be pasted like regular file operations
   static Future<bool> putFilesToClipboard(List<dynamic> files) async {
     try {
@@ -101,6 +147,104 @@ class NativeFileClipboard {
       
     } catch (e) {
       _log('❌ ERROR CLEARING FILE CLIPBOARD', e.toString());
+    }
+  }
+
+  /// Returns file paths currently in the system clipboard on macOS
+  static Future<List<String>> getFilesFromClipboard() async {
+    try {
+      if (!Platform.isMacOS) return [];
+      // Always dump clipboard details for diagnostics
+      await debugDumpClipboard();
+      // 0) First, explicitly coerce clipboard to file URL (furl) and read POSIX path
+      const furlScript = r'''
+        try
+          set u to the clipboard as «class furl»
+          try
+            return POSIX path of u
+          on error
+            try
+              tell application "System Events" to return POSIX path of (u as alias)
+            on error
+              return ""
+            end try
+          end try
+        on error
+          return ""
+        end try
+      ''';
+      final furlRes = await Process.run('osascript', ['-e', furlScript]);
+      if (furlRes.exitCode == 0 && furlRes.stdout is String) {
+        final p = (furlRes.stdout as String).trim();
+        if (p.isNotEmpty) {
+          _log('🍎 AppleScript (furl) detected file', p);
+          return [p];
+        }
+      }
+      // NEW APPROACH: Prefer AppleScript path that doesn't depend on native plugin registration
+      // 1) Attempt to coerce clipboard to a list of aliases and extract multiple file paths
+      const multiScript = r'''
+        try
+          set paths to {}
+          set itemsList to the clipboard as list
+          repeat with it in itemsList
+            try
+              set end of paths to POSIX path of it
+            end try
+          end repeat
+          set AppleScript's text item delimiters to "\n"
+          return paths as text
+        on error
+          return ""
+        end try
+      ''';
+      final multiRes = await Process.run('osascript', ['-e', multiScript]);
+      if (multiRes.exitCode == 0 && multiRes.stdout is String) {
+        final out = (multiRes.stdout as String).trim();
+        if (out.isNotEmpty) {
+          final files = out.split('\n').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+          if (files.isNotEmpty) {
+            _log('🍎 AppleScript (multi) detected files', files);
+            return files;
+          }
+        }
+      }
+
+      // 2) If multi-file coercion failed, check clipboard info for file URLs and extract single alias path
+      final detect = await Process.run('osascript', ['-e', 'clipboard info']);
+      if (detect.exitCode == 0 && detect.stdout is String && (detect.stdout as String).contains('«class furl»')) {
+        const singleScript = r'''
+          try
+            set p to POSIX path of (the clipboard as alias)
+            return p
+          on error
+            return ""
+          end try
+        ''';
+        final res = await Process.run('osascript', ['-e', singleScript]);
+        if (res.exitCode == 0) {
+          final path = (res.stdout as String).trim();
+          if (path.isNotEmpty) {
+            _log('🍎 AppleScript (single) detected file', path);
+            return [path];
+          }
+        }
+      }
+
+      // 3) As a secondary path, try the native channel if available (may be empty if not registered)
+      try {
+        final dynamic result = await _channel.invokeMethod('getFilesFromClipboard');
+        if (result is List && result.isNotEmpty) {
+          return result.map((e) => e.toString()).toList();
+        }
+      } catch (_) {
+        // Ignore; plugin may not be registered
+      }
+
+      return [];
+    } catch (e) {
+      _log('❌ ERROR GETTING FILES FROM CLIPBOARD', e.toString());
+      return [];
     }
   }
 }
