@@ -22,9 +22,9 @@ class WebRTCService {
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteDescriptionSet = false;
 
-  // Chunking protocol settings and state - much smaller chunks for large file stability
-  static const int _chunkSize = 4 * 1024; // 4 KB chunks to reduce buffer pressure
-  static const int _bufferedLowThreshold = 128 * 1024; // 128 KB backpressure threshold (very conservative)
+  // Chunking protocol settings and state
+  static const int _chunkSize = 16 * 1024; // 16 KB safe default for data channels
+  static const int _bufferedLowThreshold = 512 * 1024; // 512 KB backpressure threshold (more conservative)
   final Map<String, StringBuffer> _rxBuffers = {};
   final Map<String, int> _rxReceivedBytes = {};
   final Map<String, int> _rxTotalBytes = {};
@@ -35,8 +35,7 @@ class WebRTCService {
   DateTime _rateWindowStart = DateTime.now();
   int _messagesSent = 0;
   int _lastReceivedAck = 0;
-  final Map<String, int> _sessionChunksSent = {};
-  final Map<String, Completer<void>> _waitingForAck = {};
+  final Map<String, Completer<void>> _chunkAckCompleters = {};
 
   // Streaming files state (proto v2)
   final Map<String, _FileSession> _fileSessions = {};
@@ -91,11 +90,13 @@ class WebRTCService {
       return;
     }
 
-    // Stream each file from disk when possible to avoid preloaded byte truncation
+    // Stream each file from disk with binary protocol and acknowledgments
     for (int i = 0; i < content.files.length; i++) {
       final f = content.files[i];
       _log('🚚 START STREAMING FILE', {'index': i, 'name': f.name, 'size': f.size});
       int sent = 0;
+      int chunkSeq = 0;
+      
       if (f.path.isNotEmpty) {
         final file = File(f.path);
         if (await file.exists()) {
@@ -104,21 +105,15 @@ class WebRTCService {
             while (true) {
               final read = await raf.read(_chunkSize);
               if (read.isEmpty) break;
+              
+              // Send binary chunk with sequence number and wait for ack
+              await _sendBinaryChunkWithAck(sessionId, i, chunkSeq, read);
+              
               sent += read.length;
-              final env = jsonEncode({
-                '__sc_proto': 2,
-                'kind': 'files',
-                'mode': 'file_chunk',
-                'sessionId': sessionId,
-                'fileIndex': i,
-                'data': base64Encode(read),
-              });
-              await _sendWithBackpressure(env);
+              chunkSeq++;
               if (sent % (1024 * 1024) < _chunkSize) {
-                _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size});
+                _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size, 'seq': chunkSeq});
               }
-              // Small delay between chunks to prevent overwhelming the data channel
-              await Future.delayed(Duration(milliseconds: 5));
             }
           } finally {
             await raf.close();
@@ -134,22 +129,16 @@ class WebRTCService {
         while (offset < bytes.length) {
           final end = (offset + _chunkSize > bytes.length) ? bytes.length : offset + _chunkSize;
           final chunkBytes = bytes.sublist(offset, end);
-          final env = jsonEncode({
-            '__sc_proto': 2,
-            'kind': 'files',
-            'mode': 'file_chunk',
-            'sessionId': sessionId,
-            'fileIndex': i,
-            'data': base64Encode(chunkBytes),
-          });
-          await _sendWithBackpressure(env);
+          
+          // Send binary chunk with sequence number and wait for ack
+          await _sendBinaryChunkWithAck(sessionId, i, chunkSeq, chunkBytes);
+          
           offset = end;
           sent = offset;
+          chunkSeq++;
           if (sent % (1024 * 1024) < _chunkSize) {
-            _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size});
+            _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size, 'seq': chunkSeq});
           }
-          // Small delay between chunks to prevent overwhelming the data channel
-          await Future.delayed(Duration(milliseconds: 5));
         }
       }
       // Verify integrity before declaring completion
@@ -562,9 +551,9 @@ class WebRTCService {
 
     await waitForLowBuffer();
 
-      // Ultra-conservative rate limiting to prevent SCTP buffer overflow
+      // Much more aggressive rate limiting to prevent SCTP buffer overflow
     final now = DateTime.now();
-    if (now.difference(_rateWindowStart).inMilliseconds > 500) {
+    if (now.difference(_rateWindowStart).inMilliseconds > 200) {
       _rateWindowStart = now;
       _rateBytesWindow = 0;
     }
@@ -575,10 +564,10 @@ class WebRTCService {
     } catch (_) {
       msgBytes = text.length;
     }
-    // Ultra-conservative: ~1 MB/s => 512KB per 500ms window
-    const int windowCap = 512 * 1024;
+    // Much more conservative: ~5 MB/s => 1 MB per 200ms window
+    const int windowCap = 1024 * 1024;
     if (_rateBytesWindow + msgBytes > windowCap) {
-      final toWait = 500 - now.difference(_rateWindowStart).inMilliseconds;
+      final toWait = 200 - now.difference(_rateWindowStart).inMilliseconds;
       if (toWait > 0) {
         _log('⏸️ RATE LIMITING: waiting ${toWait}ms', {'windowBytes': _rateBytesWindow, 'msgBytes': msgBytes});
         await Future.delayed(Duration(milliseconds: toWait));
