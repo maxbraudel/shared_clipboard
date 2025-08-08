@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
@@ -15,6 +16,14 @@ class WebRTCService {
   // Queue for ICE candidates received before remote description is set
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteDescriptionSet = false;
+
+  // Chunking protocol settings and state
+  static const int _chunkSize = 16 * 1024; // 16 KB safe default for data channels
+  static const int _bufferedLowThreshold = 64 * 1024; // 64 KB backpressure threshold
+  final Map<String, StringBuffer> _rxBuffers = {};
+  final Map<String, int> _rxReceivedBytes = {};
+  final Map<String, int> _rxTotalBytes = {};
+  Completer<void>? _bufferLowCompleter;
   
   // Callback to send signals back to socket service
   Function(String to, dynamic signal)? onSignalGenerated;
@@ -99,6 +108,14 @@ class WebRTCService {
       _handleDataChannelOpen();
     }
     
+    // Backpressure: fire completer when buffered amount goes low
+    _dataChannel?.onBufferedAmountLow = () {
+      _log('📉 DATA CHANNEL BUFFERED AMOUNT LOW');
+      _bufferLowCompleter?.complete();
+      _bufferLowCompleter = null;
+    };
+    _dataChannel?.bufferedAmountLowThreshold = _bufferedLowThreshold;
+
     _dataChannel?.onDataChannelState = (state) {
       _log('📡 DATA CHANNEL STATE CHANGED', state.toString());
       if (state == RTCDataChannelState.RTCDataChannelOpen) {
@@ -107,20 +124,56 @@ class WebRTCService {
     };
 
     _dataChannel?.onMessage = (message) {
-      _log('📥 RECEIVED DATA MESSAGE (RECEIVER ROLE)', '${message.text.length} bytes');
+      // We only send text messages; support both chunked and legacy single payloads
+      final text = message.text;
+      _log('📥 RECEIVED DATA MESSAGE (RECEIVER ROLE)', '${text.length} bytes');
       try {
-        // Deserialize the received content
-        final clipboardContent = _fileTransferService.deserializeClipboardContent(message.text);
-        
-        if (clipboardContent.isFiles) {
-          _log('📁 RECEIVED FILES', '${clipboardContent.files.length} files');
-          _fileTransferService.setClipboardContent(clipboardContent);
-          _log('✅ FILES SET TO CLIPBOARD/TEMP FOLDER');
-        } else {
-          _log('📝 RECEIVED TEXT', clipboardContent.text);
-          Clipboard.setData(ClipboardData(text: clipboardContent.text));
-          _log('📋 TEXT CLIPBOARD UPDATED SUCCESSFULLY');
+        // Try to parse as protocol envelope
+        final isJsonEnvelope = text.startsWith('{') && text.contains('"__sc_proto"');
+        if (isJsonEnvelope) {
+          final Map<String, dynamic> env = jsonDecode(text);
+          if (env['__sc_proto'] == 1 && env['kind'] == 'clipboard') {
+            final mode = env['mode'] as String?;
+            final id = env['id'] as String?;
+            if (mode == 'start' && id != null) {
+              final total = (env['total'] as num?)?.toInt() ?? 0;
+              _rxBuffers[id] = StringBuffer();
+              _rxReceivedBytes[id] = 0;
+              _rxTotalBytes[id] = total;
+              _log('🔰 START CLIPBOARD TRANSFER', {'id': id, 'total': total});
+              return;
+            }
+            if (mode == 'chunk' && id != null) {
+              final data = env['data'] as String? ?? '';
+              final buf = _rxBuffers[id];
+              if (buf != null) {
+                buf.write(data);
+                final rec = (_rxReceivedBytes[id] ?? 0) + data.length;
+                _rxReceivedBytes[id] = rec;
+                final total = _rxTotalBytes[id] ?? 0;
+                if (total > 0) {
+                  _log('📦 RECEIVED CHUNK', {'id': id, 'received': rec, 'total': total});
+                } else {
+                  _log('📦 RECEIVED CHUNK', {'id': id, 'received': rec});
+                }
+              }
+              return;
+            }
+            if (mode == 'end' && id != null) {
+              final buf = _rxBuffers.remove(id);
+              _rxTotalBytes.remove(id);
+              _rxReceivedBytes.remove(id);
+              if (buf != null) {
+                final payload = buf.toString();
+                _log('🏁 END CLIPBOARD TRANSFER', {'id': id, 'size': payload.length});
+                _handleClipboardPayload(payload);
+              }
+              return;
+            }
+          }
         }
+        // Legacy single-message payload
+        _handleClipboardPayload(text);
       } catch (e) {
         _log('❌ ERROR PROCESSING RECEIVED DATA', e.toString());
       }
@@ -132,16 +185,84 @@ class WebRTCService {
     
     // Only send content if we have pending content (i.e., we're the sender)
     if (_pendingClipboardContent != null) {
-      _log('📤 SENDING PENDING CLIPBOARD CONTENT (SENDER ROLE)', _pendingClipboardContent);
-      try {
-        _dataChannel?.send(RTCDataChannelMessage(_pendingClipboardContent!));
+      final payload = _pendingClipboardContent!;
+      _log('📤 SENDING PENDING CLIPBOARD CONTENT (SENDER ROLE)', {'bytes': payload.length});
+      _sendLargeMessage(payload).then((_) {
         _log('✅ CLIPBOARD CONTENT SENT SUCCESSFULLY');
         _pendingClipboardContent = null;
-      } catch (e) {
+      }).catchError((e) {
         _log('❌ ERROR SENDING CLIPBOARD CONTENT', e.toString());
-      }
+      });
     } else {
       _log('⚠️ NO PENDING CLIPBOARD CONTENT TO SEND');
+    }
+  }
+
+  // Send message with chunking and backpressure-safe logic
+  Future<void> _sendLargeMessage(String text) async {
+    if (_dataChannel == null) throw StateError('DataChannel not ready');
+    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    final total = text.length;
+    // Start envelope
+    final startEnv = jsonEncode({
+      '__sc_proto': 1,
+      'kind': 'clipboard',
+      'mode': 'start',
+      'id': id,
+      'total': total,
+      'chunkSize': _chunkSize,
+    });
+    _dataChannel!.send(RTCDataChannelMessage(startEnv));
+    // Chunks
+    int offset = 0;
+    while (offset < total) {
+      final end = (offset + _chunkSize > total) ? total : offset + _chunkSize;
+      final chunk = text.substring(offset, end);
+      final chunkEnv = jsonEncode({
+        '__sc_proto': 1,
+        'kind': 'clipboard',
+        'mode': 'chunk',
+        'id': id,
+        'seq': offset ~/ _chunkSize,
+        'data': chunk,
+      });
+      _dataChannel!.send(RTCDataChannelMessage(chunkEnv));
+      offset = end;
+
+      // Backpressure: wait if buffered amount is high
+      if ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
+        _log('⏳ WAITING BUFFER TO DRAIN', {'buffered': _dataChannel!.bufferedAmount});
+        _bufferLowCompleter = Completer<void>();
+        await _bufferLowCompleter!.future.timeout(Duration(seconds: 5), onTimeout: () {
+          _log('⚠️ BUFFER LOW TIMEOUT, CONTINUING');
+          _bufferLowCompleter = null;
+        });
+      }
+    }
+    // End envelope
+    final endEnv = jsonEncode({
+      '__sc_proto': 1,
+      'kind': 'clipboard',
+      'mode': 'end',
+      'id': id,
+    });
+    _dataChannel!.send(RTCDataChannelMessage(endEnv));
+  }
+
+  void _handleClipboardPayload(String payload) {
+    try {
+      final clipboardContent = _fileTransferService.deserializeClipboardContent(payload);
+      if (clipboardContent.isFiles) {
+        _log('📁 RECEIVED FILES', '${clipboardContent.files.length} files');
+        _fileTransferService.setClipboardContent(clipboardContent);
+        _log('✅ FILES SET TO CLIPBOARD/TEMP FOLDER');
+      } else {
+        _log('📝 RECEIVED TEXT', clipboardContent.text);
+        Clipboard.setData(ClipboardData(text: clipboardContent.text));
+        _log('📋 TEXT CLIPBOARD UPDATED SUCCESSFULLY');
+      }
+    } catch (e) {
+      _log('❌ ERROR PROCESSING RECEIVED DATA', e.toString());
     }
   }
 
