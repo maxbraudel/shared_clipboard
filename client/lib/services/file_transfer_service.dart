@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_clipboard/services/windows_clipboard_debug.dart';
 import 'package:shared_clipboard/services/windows_file_clipboard.dart';
-import 'package:shared_clipboard/services/native_file_clipboard.dart';
+// Removed native macOS pasteboard integration
 
 class FileTransferService {
   static const int MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit for safety
@@ -240,70 +240,12 @@ class FileTransferService {
   // Set files to clipboard (put files directly in system clipboard for proper paste behavior)
   Future<void> _setFiles(List<FileData> files) async {
     try {
-      _log('📁 SETTING FILES TO SYSTEM CLIPBOARD', '${files.length} files');
-      
-      // Try native clipboard first (this puts actual files in clipboard!)
-      final success = await NativeFileClipboard.putFilesToClipboard(files);
-      
-      if (success) {
-        _log('🎉 FILES SET TO NATIVE CLIPBOARD SUCCESSFULLY!');
-        _showFileReceivedMessage(files.length, 'native clipboard - ready to paste!');
-        return;
-      } else {
-        _log('⚠️ NATIVE CLIPBOARD FAILED, PROMPTING USER FOR DOWNLOAD LOCATION');
-      }
-      
-      // Fallback: Prompt user to save each file to their chosen location
-      List<String> savedFilePaths = [];
-      
-      for (FileData fileData in files) {
-        // Verify checksum before prompting user
-        final calculatedChecksum = sha256.convert(fileData.content).toString();
-        if (calculatedChecksum != fileData.checksum) {
-          _log('❌ CHECKSUM MISMATCH FOR FILE', fileData.name);
-          continue;
-        }
-        
-        // Prompt user to save file
-        final String? outputFile = await FilePicker.platform.saveFile(
-          dialogTitle: 'Save received file: ${fileData.name}',
-          fileName: fileData.name,
-          type: FileType.any,
-        );
-        
-        if (outputFile != null) {
-          try {
-            final file = File(outputFile);
-            await file.writeAsBytes(fileData.content);
-            
-            // Verify the written file
-            final writtenBytes = await file.readAsBytes();
-            final writtenChecksum = sha256.convert(writtenBytes).toString();
-            
-            if (writtenChecksum != fileData.checksum) {
-              _log('❌ CHECKSUM MISMATCH AFTER WRITE', fileData.name);
-              await file.delete();
-              continue;
-            }
-            
-            savedFilePaths.add(outputFile);
-            _log('✅ FILE SAVED TO USER LOCATION', '${fileData.name} → $outputFile');
-          } catch (e) {
-            _log('❌ ERROR SAVING FILE', '${fileData.name}: $e');
-          }
-        } else {
-          _log('ℹ️ USER CANCELLED SAVE', fileData.name);
-        }
-      }
-      
-      if (savedFilePaths.isNotEmpty) {
-        // Set file paths to clipboard as text for easy access
-        final pathsText = savedFilePaths.join('\n');
-        await Clipboard.setData(ClipboardData(text: pathsText));
-        _log('📋 SAVED FILE PATHS SET TO CLIPBOARD', '${savedFilePaths.length} files');
-        
-        _showFileReceivedMessage(savedFilePaths.length, 'user-selected locations');
-      }
+      _log('📁 FILE CLIPBOARD HANDLING DISABLED (streaming is used)', '${files.length} files');
+      // No native pasteboard or manual save prompts anymore.
+      // Optionally, copy filenames to text clipboard for user convenience.
+      final namesText = files.map((f) => f.name).join('\n');
+      await Clipboard.setData(ClipboardData(text: namesText));
+      _log('📋 COPIED FILE NAMES TO CLIPBOARD AS TEXT', files.length);
     } catch (e) {
       _log('❌ ERROR SETTING FILES TO CLIPBOARD', e.toString());
     }
