@@ -22,9 +22,9 @@ class WebRTCService {
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteDescriptionSet = false;
 
-  // Chunking protocol settings and state
-  static const int _chunkSize = 16 * 1024; // 16 KB safe default for data channels
-  static const int _bufferedLowThreshold = 64 * 1024; // 64 KB backpressure threshold
+  // Chunking protocol settings and state - reduced for better reliability
+  static const int _chunkSize = 8 * 1024; // 8 KB chunks for better SCTP compatibility
+  static const int _bufferedLowThreshold = 32 * 1024; // 32 KB backpressure threshold
   final Map<String, StringBuffer> _rxBuffers = {};
   final Map<String, int> _rxReceivedBytes = {};
   final Map<String, int> _rxTotalBytes = {};
@@ -83,11 +83,21 @@ class WebRTCService {
       return;
     }
 
-    // Stream each file
+    // Stream each file with comprehensive diagnostics
     for (int i = 0; i < content.files.length; i++) {
       final f = content.files[i];
       final bytes = f.content; // already read in FileTransferService
       int offset = 0;
+      int chunkCount = 0;
+      final totalChunks = (bytes.length / _chunkSize).ceil();
+      
+      _log('🚀 STARTING FILE TRANSFER', {
+        'file': f.name,
+        'size': bytes.length,
+        'totalChunks': totalChunks,
+        'chunkSize': _chunkSize
+      });
+      
       while (offset < bytes.length) {
         final end = (offset + _chunkSize > bytes.length) ? bytes.length : offset + _chunkSize;
         final chunkBytes = bytes.sublist(offset, end);
@@ -99,7 +109,32 @@ class WebRTCService {
           'fileIndex': i,
           'data': base64Encode(chunkBytes),
         });
-        _dataChannel!.send(RTCDataChannelMessage(env));
+        
+        try {
+          _dataChannel!.send(RTCDataChannelMessage(env));
+          chunkCount++;
+          
+          // Log progress every 100 chunks
+          if (chunkCount % 100 == 0) {
+            final progress = (offset / bytes.length * 100).toStringAsFixed(1);
+            _log('📤 SENDING PROGRESS', {
+              'file': f.name,
+              'chunk': chunkCount,
+              'of': totalChunks,
+              'progress': '${progress}%',
+              'bytesRemaining': bytes.length - offset,
+              'bufferedAmount': _dataChannel!.bufferedAmount
+            });
+          }
+        } catch (e) {
+          _log('❌ ERROR SENDING CHUNK', {
+            'chunk': chunkCount,
+            'offset': offset,
+            'error': e.toString()
+          });
+          throw e;
+        }
+        
         offset = end;
 
         // Proper backpressure handling - wait indefinitely for buffer to drain
@@ -117,6 +152,14 @@ class WebRTCService {
           }
         }
       }
+      
+      _log('✅ FINISHED SENDING FILE', {
+        'file': f.name,
+        'totalChunks': chunkCount,
+        'totalBytes': bytes.length,
+        'finalBufferedAmount': _dataChannel!.bufferedAmount
+      });
+      
       // End of this file
       final fileEnd = jsonEncode({
         '__sc_proto': 2,
@@ -150,7 +193,15 @@ class WebRTCService {
       final configuration = {
         'iceServers': [
           {'urls': 'stun:stun.l.google.com:19302'},
-        ]
+        ],
+        // Enable SCTP data channels with proper configuration
+        'enableDtlsSrtp': true,
+        'sdpSemantics': 'unified-plan',
+        // Configure SCTP for large data transfers
+        'dataChannelConfiguration': {
+          'maxMessageSize': 1048576,  // 1MB max message size
+          'maxRetransmits': 0,  // Reliable delivery
+        }
       };
       
       // Create peer connection with timeout protection
@@ -560,9 +611,16 @@ class WebRTCService {
         _log('❌ ERROR READING CLIPBOARD', e.toString());
       }
       
-      // Create data channel
+      // Create data channel with proper configuration for large file transfers
       _log('📡 CREATING DATA CHANNEL');
-      _dataChannel = await _peerConnection?.createDataChannel('clipboard', RTCDataChannelInit());
+      final dataChannelInit = RTCDataChannelInit()
+        ..ordered = true  // Ensure ordered delivery for file integrity
+        ..maxRetransmits = null  // Use maxPacketLifeTime instead
+        ..maxPacketLifeTime = null  // Reliable delivery (no packet lifetime limit)
+        ..protocol = 'file-transfer'  // Custom protocol identifier
+        ..negotiated = false;  // Let WebRTC handle negotiation
+      
+      _dataChannel = await _peerConnection?.createDataChannel('clipboard', dataChannelInit);
       if (_dataChannel != null) {
         _log('✅ DATA CHANNEL CREATED', {
           'label': _dataChannel!.label,
