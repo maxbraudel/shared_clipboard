@@ -287,6 +287,14 @@ class SocketService {
     socket.emit('share-ready');
   }
 
+  // Defensive: explicitly clear any ready-to-share status before requesting
+  void clearShareReady() {
+    _log('🧹 CLEARING SHARE-READY STATE');
+    // Try common event names the server might recognize
+    socket.emit('share-not-ready');
+    socket.emit('not-ready');
+  }
+
   void sendRequestShare() {
     _log('📤 SENDING REQUEST-SHARE');
     socket.emit('request-share', {});

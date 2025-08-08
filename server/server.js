@@ -217,13 +217,39 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Allow clients to explicitly clear their ready-to-share state
+  socket.on('share-not-ready', () => {
+    log('🧹 SHARE-NOT-READY RECEIVED', {
+      socketId: socket.id.substring(0, 8) + '...',
+      deviceExists: !!devices[socket.id]
+    });
+    if (devices[socket.id]) {
+      devices[socket.id].readyToShare = false;
+      log('✅ DEVICE CLEARED FROM READY STATE', {
+        socketId: socket.id.substring(0, 8) + '...',
+        devicesReadyToShare: Object.keys(devices).filter(id => devices[id].readyToShare).length
+      });
+    }
+  });
+
+  // Alias some clients may emit
+  socket.on('not-ready', () => {
+    log('🧹 NOT-READY RECEIVED (alias)');
+    if (devices[socket.id]) {
+      devices[socket.id].readyToShare = false;
+    }
+  });
+
   socket.on('request-share', (data) => {
     log('📥 SHARE REQUEST RECEIVED', {
       requesterSocketId: socket.id.substring(0, 8) + '...',
       requestData: data
     });
     
-    const availableDevices = Object.keys(devices).filter(id => devices[id].readyToShare);
+    // Build list of ready devices EXCLUDING the requester
+    const availableDevices = Object
+      .keys(devices)
+      .filter(id => devices[id].readyToShare && id !== socket.id);
     log('🔍 LOOKING FOR SHARING DEVICES', {
       totalDevices: Object.keys(devices).length,
       devicesReadyToShare: availableDevices.length,
@@ -249,7 +275,11 @@ io.on('connection', (socket) => {
       log('❌ NO SHARING DEVICE AVAILABLE', {
         requester: socket.id.substring(0, 8) + '...',
         totalDevices: Object.keys(devices).length,
-        message: 'No devices are currently ready to share'
+        message: 'No devices are currently ready to share (excluding requester)'
+      });
+      // Optionally notify requester so they can provide UI feedback
+      io.to(socket.id).emit('no-sharer-available', {
+        message: 'No other device is ready to share right now.'
       });
     }
   });

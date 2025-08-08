@@ -47,6 +47,8 @@ class ClipboardService {
 
   void requestClipboard() {
     print("Requesting clipboard content");
+    // Defensive: ensure we're not advertised as ready-to-share while requesting
+    _socketService.clearShareReady();
     _socketService.sendRequestShare();
   }
 
