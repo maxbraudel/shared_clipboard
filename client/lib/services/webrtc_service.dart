@@ -1,15 +1,19 @@
+import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
+import 'package:file_picker/file_picker.dart';
 
 class WebRTCService {
   RTCPeerConnection? _peerConnection;
   RTCDataChannel? _dataChannel;
   String? _peerId;
   bool _isInitialized = false;
-  String? _pendingClipboardContent;
+  ClipboardContent? _pendingClipboardContent; // store structured content to allow streaming
   bool _isResetting = false; // Prevent multiple resets
   final FileTransferService _fileTransferService = FileTransferService();
   
@@ -24,6 +28,9 @@ class WebRTCService {
   final Map<String, int> _rxReceivedBytes = {};
   final Map<String, int> _rxTotalBytes = {};
   Completer<void>? _bufferLowCompleter;
+
+  // Streaming files state (proto v2)
+  final Map<String, _FileSession> _fileSessions = {};
   
   // Callback to send signals back to socket service
   Function(String to, dynamic signal)? onSignalGenerated;
@@ -38,6 +45,76 @@ class WebRTCService {
     } else {
       print('[$timestamp] WEBRTC: $message');
     }
+  }
+
+  // Streaming files protocol (proto v2)
+  Future<void> _sendFilesStreaming(ClipboardContent content) async {
+    if (_dataChannel == null) throw StateError('DataChannel not ready');
+    final sessionId = DateTime.now().microsecondsSinceEpoch.toString();
+    final filesMeta = content.files
+        .map((f) => {
+              'name': f.name,
+              'size': f.size,
+              'checksum': f.checksum,
+            })
+        .toList();
+    // Start session with metadata so receiver can prompt immediately
+    final startEnv = jsonEncode({
+      '__sc_proto': 2,
+      'kind': 'files',
+      'mode': 'start',
+      'sessionId': sessionId,
+      'files': filesMeta,
+    });
+    _dataChannel!.send(RTCDataChannelMessage(startEnv));
+
+    // Stream each file
+    for (int i = 0; i < content.files.length; i++) {
+      final f = content.files[i];
+      final bytes = f.content; // already read in FileTransferService
+      int offset = 0;
+      while (offset < bytes.length) {
+        final end = (offset + _chunkSize > bytes.length) ? bytes.length : offset + _chunkSize;
+        final chunkBytes = bytes.sublist(offset, end);
+        final env = jsonEncode({
+          '__sc_proto': 2,
+          'kind': 'files',
+          'mode': 'file_chunk',
+          'sessionId': sessionId,
+          'fileIndex': i,
+          'data': base64Encode(chunkBytes),
+        });
+        _dataChannel!.send(RTCDataChannelMessage(env));
+        offset = end;
+
+        if ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
+          _log('⏳ WAITING BUFFER TO DRAIN', {'buffered': _dataChannel!.bufferedAmount});
+          _bufferLowCompleter = Completer<void>();
+          await _bufferLowCompleter!.future.timeout(Duration(seconds: 5), onTimeout: () {
+            _log('⚠️ BUFFER LOW TIMEOUT, CONTINUING');
+            _bufferLowCompleter = null;
+          });
+        }
+      }
+      // End of this file
+      final fileEnd = jsonEncode({
+        '__sc_proto': 2,
+        'kind': 'files',
+        'mode': 'file_end',
+        'sessionId': sessionId,
+        'fileIndex': i,
+      });
+      _dataChannel!.send(RTCDataChannelMessage(fileEnd));
+    }
+
+    // End session
+    final endEnv = jsonEncode({
+      '__sc_proto': 2,
+      'kind': 'files',
+      'mode': 'end',
+      'sessionId': sessionId,
+    });
+    _dataChannel!.send(RTCDataChannelMessage(endEnv));
   }
 
   Future<void> init() async {
@@ -124,7 +201,7 @@ class WebRTCService {
     };
 
     _dataChannel?.onMessage = (message) {
-      // We only send text messages; support both chunked and legacy single payloads
+      // Support: proto v2 streaming (files), proto v1 chunked JSON payloads, and legacy single payload
       final text = message.text;
       _log('📥 RECEIVED DATA MESSAGE (RECEIVER ROLE)', '${text.length} bytes');
       try {
@@ -132,6 +209,34 @@ class WebRTCService {
         final isJsonEnvelope = text.startsWith('{') && text.contains('"__sc_proto"');
         if (isJsonEnvelope) {
           final Map<String, dynamic> env = jsonDecode(text);
+          // Proto v2: streaming files
+          if (env['__sc_proto'] == 2 && env['kind'] == 'files') {
+            final mode = env['mode'] as String?;
+            final sessionId = env['sessionId'] as String?;
+            if (mode == 'start' && sessionId != null) {
+              // Ask user for directory immediately
+              final filesMeta = (env['files'] as List).cast<Map<String, dynamic>>();
+              _log('🔰 START FILE STREAM SESSION', {'sessionId': sessionId, 'files': filesMeta.length});
+              _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
+              return;
+            }
+            if (mode == 'file_chunk' && sessionId != null) {
+              final idx = env['fileIndex'] as int? ?? 0;
+              final dataB64 = env['data'] as String? ?? '';
+              _handleFileChunk(sessionId, idx, dataB64);
+              return;
+            }
+            if (mode == 'file_end' && sessionId != null) {
+              final idx = env['fileIndex'] as int? ?? 0;
+              _handleFileEnd(sessionId, idx);
+              return;
+            }
+            if (mode == 'end' && sessionId != null) {
+              _finalizeFileSession(sessionId);
+              return;
+            }
+          }
+          // Proto v1: chunked JSON clipboard payload
           if (env['__sc_proto'] == 1 && env['kind'] == 'clipboard') {
             final mode = env['mode'] as String?;
             final id = env['id'] as String?;
@@ -185,14 +290,25 @@ class WebRTCService {
     
     // Only send content if we have pending content (i.e., we're the sender)
     if (_pendingClipboardContent != null) {
-      final payload = _pendingClipboardContent!;
-      _log('📤 SENDING PENDING CLIPBOARD CONTENT (SENDER ROLE)', {'bytes': payload.length});
-      _sendLargeMessage(payload).then((_) {
-        _log('✅ CLIPBOARD CONTENT SENT SUCCESSFULLY');
-        _pendingClipboardContent = null;
-      }).catchError((e) {
-        _log('❌ ERROR SENDING CLIPBOARD CONTENT', e.toString());
-      });
+      final content = _pendingClipboardContent!;
+      if (content.isFiles) {
+        _log('📤 SENDING FILES VIA STREAMING PROTOCOL', {'count': content.files.length});
+        _sendFilesStreaming(content).then((_) {
+          _log('✅ FILES STREAMED SUCCESSFULLY');
+          _pendingClipboardContent = null;
+        }).catchError((e) {
+          _log('❌ ERROR STREAMING FILES', e.toString());
+        });
+      } else {
+        final payload = _fileTransferService.serializeClipboardContent(content);
+        _log('📤 SENDING TEXT/JSON VIA CHUNKING', {'bytes': payload.length});
+        _sendLargeMessage(payload).then((_) {
+          _log('✅ CLIPBOARD CONTENT SENT SUCCESSFULLY');
+          _pendingClipboardContent = null;
+        }).catchError((e) {
+          _log('❌ ERROR SENDING CLIPBOARD CONTENT', e.toString());
+        });
+      }
     } else {
       _log('⚠️ NO PENDING CLIPBOARD CONTENT TO SEND');
     }
@@ -253,9 +369,9 @@ class WebRTCService {
     try {
       final clipboardContent = _fileTransferService.deserializeClipboardContent(payload);
       if (clipboardContent.isFiles) {
-        _log('📁 RECEIVED FILES', '${clipboardContent.files.length} files');
+        _log('📁 RECEIVED FILES (JSON PAYLOAD)', '${clipboardContent.files.length} files');
         _fileTransferService.setClipboardContent(clipboardContent);
-        _log('✅ FILES SET TO CLIPBOARD/TEMP FOLDER');
+        _log('✅ FILES HANDLED VIA EXISTING FLOW');
       } else {
         _log('📝 RECEIVED TEXT', clipboardContent.text);
         Clipboard.setData(ClipboardData(text: clipboardContent.text));
@@ -368,11 +484,11 @@ class WebRTCService {
         
         if (clipboardContent.isFiles) {
           _log('📁 FOUND FILES IN CLIPBOARD', '${clipboardContent.files.length} files');
-          _pendingClipboardContent = _fileTransferService.serializeClipboardContent(clipboardContent);
-          _log('� FILES SERIALIZED FOR TRANSFER', '${_pendingClipboardContent!.length} bytes');
+          _pendingClipboardContent = clipboardContent; // we'll stream them
+          _log('📦 FILES READY FOR STREAMING', {'count': clipboardContent.files.length});
         } else if (clipboardContent.text.isNotEmpty) {
           _log('📝 FOUND TEXT IN CLIPBOARD', clipboardContent.text);
-          _pendingClipboardContent = _fileTransferService.serializeClipboardContent(clipboardContent);
+          _pendingClipboardContent = clipboardContent; // will serialize at send
         } else {
           _log('❌ NO CLIPBOARD CONTENT TO SHARE');
         }
@@ -635,8 +751,152 @@ class WebRTCService {
     }
   }
 
+  // ===== Streaming file receiver helpers (proto v2) =====
+  Future<void> _promptDirectoryAndPrepareFiles(String sessionId, List<Map<String, dynamic>> filesMeta) async {
+    try {
+      String? dirPath = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Choose folder to save incoming files');
+      if (dirPath == null || dirPath.isEmpty) {
+        // User cancelled; fall back to a temp directory to avoid breaking the stream
+        final temp = await Directory.systemTemp.createTemp('shared_clipboard_');
+        dirPath = temp.path;
+        _log('ℹ️ USER CANCELLED DIRECTORY PICKER - USING TEMP DIR', dirPath);
+      }
+
+      final session = _FileSession(dirPath);
+      for (final meta in filesMeta) {
+        final name = (meta['name'] as String?) ?? 'file';
+        final size = (meta['size'] as num?)?.toInt() ?? 0;
+        final checksum = (meta['checksum'] as String?) ?? '';
+        final file = File('${session.dirPath}${Platform.pathSeparator}$name');
+        // Ensure parent exists
+        await file.parent.create(recursive: true);
+        final sink = file.openWrite();
+        session.files.add(_IncomingFile(
+          name: name,
+          size: size,
+          checksum: checksum,
+          file: file,
+          sink: sink,
+        ));
+      }
+      _fileSessions[sessionId] = session;
+      _log('📂 FILE SESSION PREPARED', {'sessionId': sessionId, 'dir': session.dirPath, 'files': session.files.length});
+    } catch (e) {
+      _log('❌ ERROR PREPARING FILE SESSION', e.toString());
+    }
+  }
+
+  Future<void> _handleFileChunk(String sessionId, int fileIndex, String dataB64) async {
+    final session = _fileSessions[sessionId];
+    if (session == null) {
+      _log('⚠️ RECEIVED CHUNK FOR UNKNOWN SESSION', sessionId);
+      return;
+    }
+    if (fileIndex < 0 || fileIndex >= session.files.length) {
+      _log('⚠️ INVALID FILE INDEX', {'sessionId': sessionId, 'index': fileIndex});
+      return;
+    }
+    try {
+      final bytes = base64Decode(dataB64);
+      final incoming = session.files[fileIndex];
+      incoming.sink.add(bytes);
+      incoming.received += bytes.length;
+      if (incoming.received % (1024 * 1024) < bytes.length) { // every ~1MB
+        _log('⬇️ PROGRESS', {'file': incoming.name, 'received': incoming.received, 'of': incoming.size});
+      }
+    } catch (e) {
+      _log('❌ ERROR WRITING FILE CHUNK', {'sessionId': sessionId, 'index': fileIndex, 'error': e.toString()});
+    }
+  }
+
+  Future<void> _handleFileEnd(String sessionId, int fileIndex) async {
+    final session = _fileSessions[sessionId];
+    if (session == null) return;
+    if (fileIndex < 0 || fileIndex >= session.files.length) return;
+    try {
+      final incoming = session.files[fileIndex];
+      await incoming.sink.flush();
+      await incoming.sink.close();
+      _log('✅ FILE STREAM CLOSED', {'file': incoming.name, 'bytes': incoming.received});
+    } catch (e) {
+      _log('❌ ERROR CLOSING FILE SINK', e.toString());
+    }
+  }
+
+  Future<void> _finalizeFileSession(String sessionId) async {
+    final session = _fileSessions.remove(sessionId);
+    if (session == null) return;
+    try {
+      // Ensure all sinks are closed
+      for (final f in session.files) {
+        try { await f.sink.flush(); } catch (_) {}
+        try { await f.sink.close(); } catch (_) {}
+      }
+
+      // Verify sizes and checksums
+      bool allOk = true;
+      for (final f in session.files) {
+        try {
+          final fileBytes = await f.file.readAsBytes();
+          final sizeOk = fileBytes.length == f.size;
+          final hash = sha256.convert(fileBytes).toString();
+          final checksumOk = f.checksum.isEmpty || hash == f.checksum;
+          if (!sizeOk || !checksumOk) {
+            allOk = false;
+            _log('⚠️ VERIFICATION FAILED', {'file': f.name, 'sizeOk': sizeOk, 'checksumOk': checksumOk});
+          }
+        } catch (e) {
+          allOk = false;
+          _log('❌ ERROR VERIFYING FILE', {'file': f.name, 'error': e.toString()});
+        }
+      }
+
+      // Update clipboard with received files (try native clipboard via FileTransferService)
+      final filesForClipboard = <FileData>[];
+      for (final f in session.files) {
+        final bytes = await f.file.readAsBytes();
+        final checksum = sha256.convert(bytes).toString();
+        filesForClipboard.add(FileData(
+          name: f.name,
+          path: f.file.path,
+          size: bytes.length,
+          mimeType: 'application/octet-stream',
+          checksum: checksum,
+          content: Uint8List.fromList(bytes),
+        ));
+      }
+      await _fileTransferService.setClipboardContent(ClipboardContent.files(filesForClipboard));
+      _log('🎉 FILE SESSION FINALIZED', {'sessionId': sessionId, 'files': filesForClipboard.length, 'verified': allOk});
+    } catch (e) {
+      _log('❌ ERROR FINALIZING FILE SESSION', e.toString());
+    }
+  }
+
   void dispose() {
     _dataChannel?.close();
     _peerConnection?.close();
   }
+}
+
+// Private classes to track incoming streaming files
+class _FileSession {
+  final String dirPath;
+  final List<_IncomingFile> files = [];
+  _FileSession(this.dirPath);
+}
+
+class _IncomingFile {
+  final String name;
+  final int size;
+  final String checksum;
+  final File file;
+  final IOSink sink;
+  int received = 0;
+  _IncomingFile({
+    required this.name,
+    required this.size,
+    required this.checksum,
+    required this.file,
+    required this.sink,
+  });
 }
