@@ -101,17 +101,21 @@ class WebRTCService {
       while (offset < bytes.length) {
         final end = (offset + _chunkSize > bytes.length) ? bytes.length : offset + _chunkSize;
         final chunkBytes = bytes.sublist(offset, end);
+        // Send compact header first (text), then binary payload. This avoids large text accumulation limits.
         final env = jsonEncode({
           '__sc_proto': 2,
           'kind': 'files',
-          'mode': 'file_chunk',
+          'mode': 'file_chunk_hdr',
           'sessionId': sessionId,
           'fileIndex': i,
-          'data': base64Encode(chunkBytes),
+          'len': chunkBytes.length,
         });
         
         try {
+          // Send header
           _dataChannel!.send(RTCDataChannelMessage(env));
+          // Then send the raw bytes as binary
+          _dataChannel!.send(RTCDataChannelMessage.fromBinary(Uint8List.fromList(chunkBytes)));
           chunkCount++;
           
           // Log progress every 100 chunks
@@ -274,8 +278,18 @@ class WebRTCService {
 
     _dataChannel?.onMessage = (message) {
       // Support: proto v2 streaming (files), proto v1 chunked JSON payloads, and legacy single payload
+      if (message.isBinary) {
+        final data = message.binary;
+        _log('📥 RECEIVED BINARY MESSAGE', {'bytes': data.length});
+        try {
+          _handleBinaryChunk(data);
+        } catch (e) {
+          _log('❌ ERROR PROCESSING BINARY MESSAGE', e.toString());
+        }
+        return;
+      }
       final text = message.text;
-      _log('📥 RECEIVED DATA MESSAGE (RECEIVER ROLE)', '${text.length} bytes');
+      _log('📥 RECEIVED TEXT MESSAGE (RECEIVER ROLE)', '${text.length} bytes');
       try {
         // Try to parse as protocol envelope
         final isJsonEnvelope = text.startsWith('{') && text.contains('"__sc_proto"');
@@ -330,10 +344,10 @@ class WebRTCService {
               _log('🛑 RECEIVED CANCEL, ABORTING SESSION', sessionId);
               return;
             }
-            if (mode == 'file_chunk' && sessionId != null) {
+            if (mode == 'file_chunk_hdr' && sessionId != null) {
               final idx = env['fileIndex'] as int? ?? 0;
-              final dataB64 = env['data'] as String? ?? '';
-              _handleFileChunk(sessionId, idx, dataB64);
+              final len = (env['len'] as num?)?.toInt() ?? 0;
+              _handleFileChunkHeader(sessionId, idx, len);
               return;
             }
             if (mode == 'file_end' && sessionId != null) {
@@ -992,6 +1006,57 @@ class WebRTCService {
     }
   }
 
+  // New: header + binary payload handling for streaming chunks
+  void _handleFileChunkHeader(String sessionId, int fileIndex, int len) {
+    final session = _fileSessions[sessionId];
+    if (session == null) {
+      _log('⚠️ RECEIVED CHUNK HEADER FOR UNKNOWN SESSION', sessionId);
+      return;
+    }
+    if (fileIndex < 0 || fileIndex >= session.files.length) {
+      _log('⚠️ INVALID FILE INDEX IN HEADER', {'sessionId': sessionId, 'index': fileIndex});
+      return;
+    }
+    session.pendingFileIndex = fileIndex;
+    session.pendingExpectedLen = len;
+    _log('🧾 EXPECTING BINARY CHUNK', {'fileIndex': fileIndex, 'len': len});
+  }
+
+  void _handleBinaryChunk(Uint8List data) {
+    // Find the session that is awaiting a binary chunk (there should be at most one at a time)
+    for (final entry in _fileSessions.entries) {
+      final session = entry.value;
+      final idx = session.pendingFileIndex;
+      if (idx != null) {
+        try {
+          if (idx < 0 || idx >= session.files.length) {
+            _log('⚠️ INVALID FILE INDEX FOR BINARY PAYLOAD', idx);
+            // Clear expectation to avoid deadlock
+            session.pendingFileIndex = null;
+            session.pendingExpectedLen = 0;
+            return;
+          }
+          final incoming = session.files[idx];
+          incoming.sink.add(data);
+          incoming.received += data.length;
+          if (session.pendingExpectedLen != 0 && data.length != session.pendingExpectedLen) {
+            _log('⚠️ BINARY LEN MISMATCH', {'expected': session.pendingExpectedLen, 'got': data.length});
+          }
+          if (incoming.received % (1024 * 1024) < data.length) { // every ~1MB
+            _log('⬇️ PROGRESS', {'file': incoming.name, 'received': incoming.received, 'of': incoming.size});
+          }
+        } catch (e) {
+          _log('❌ ERROR WRITING BINARY CHUNK', e.toString());
+        } finally {
+          session.pendingFileIndex = null;
+          session.pendingExpectedLen = 0;
+        }
+        return;
+      }
+    }
+    _log('⚠️ RECEIVED UNEXPECTED BINARY MESSAGE (NO PENDING HEADER)', {'bytes': data.length});
+  }
+
   Future<void> _handleFileEnd(String sessionId, int fileIndex) async {
     final session = _fileSessions[sessionId];
     if (session == null) return;
@@ -1085,6 +1150,9 @@ class WebRTCService {
 class _FileSession {
   final String dirPath;
   final List<_IncomingFile> files = [];
+  // For binary framing: next expected binary payload
+  int? pendingFileIndex;
+  int pendingExpectedLen = 0;
   _FileSession(this.dirPath);
 }
 
