@@ -11,7 +11,7 @@ import 'package:shared_clipboard/services/native_file_clipboard.dart';
 // Removed native macOS pasteboard integration
 
 class FileTransferService {
-  static const int MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit for safety
+  static const int MAX_FILE_SIZE = 1000000 * 1024 * 1024; // 50MB limit for safety
   
   // Helper function for timestamped logging
   void _log(String message, [dynamic data]) {
