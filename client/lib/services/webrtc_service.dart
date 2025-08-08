@@ -24,7 +24,7 @@ class WebRTCService {
 
   // Chunking protocol settings and state
   static const int _chunkSize = 16 * 1024; // 16 KB safe default for data channels
-  static const int _bufferedLowThreshold = 64 * 1024; // 64 KB backpressure threshold
+  static const int _bufferedLowThreshold = 512 * 1024; // 512 KB backpressure threshold (more conservative)
   final Map<String, StringBuffer> _rxBuffers = {};
   final Map<String, int> _rxReceivedBytes = {};
   final Map<String, int> _rxTotalBytes = {};
@@ -68,7 +68,7 @@ class WebRTCService {
       'sessionId': sessionId,
       'files': filesMeta,
     });
-    _dataChannel!.send(RTCDataChannelMessage(startEnv));
+    await _sendWithBackpressure(startEnv);
 
     // Wait for receiver to prepare and acknowledge readiness
     final ready = Completer<void>();
@@ -99,17 +99,9 @@ class WebRTCService {
           'fileIndex': i,
           'data': base64Encode(chunkBytes),
         });
-        _dataChannel!.send(RTCDataChannelMessage(env));
+        await _sendWithBackpressure(env);
         offset = end;
 
-        if ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
-          _log('⏳ WAITING BUFFER TO DRAIN', {'buffered': _dataChannel!.bufferedAmount});
-          _bufferLowCompleter = Completer<void>();
-          await _bufferLowCompleter!.future.timeout(Duration(seconds: 5), onTimeout: () {
-            _log('⚠️ BUFFER LOW TIMEOUT, CONTINUING');
-            _bufferLowCompleter = null;
-          });
-        }
       }
       // End of this file
       final fileEnd = jsonEncode({
@@ -119,7 +111,7 @@ class WebRTCService {
         'sessionId': sessionId,
         'fileIndex': i,
       });
-      _dataChannel!.send(RTCDataChannelMessage(fileEnd));
+      await _sendWithBackpressure(fileEnd);
     }
 
     // End session
@@ -129,7 +121,7 @@ class WebRTCService {
       'mode': 'end',
       'sessionId': sessionId,
     });
-    _dataChannel!.send(RTCDataChannelMessage(endEnv));
+    await _sendWithBackpressure(endEnv);
   }
 
   Future<void> init() async {
@@ -242,7 +234,7 @@ class WebRTCService {
                     'mode': 'cancel',
                     'sessionId': sessionId,
                   });
-                  _dataChannel?.send(RTCDataChannelMessage(cancelEnv));
+                  await _sendWithBackpressure(cancelEnv);
                   _log('🚫 RECEIVER CANCELLED BEFORE READY', sessionId);
                   return;
                 }
@@ -253,7 +245,7 @@ class WebRTCService {
                   'mode': 'ready',
                   'sessionId': sessionId,
                 });
-                _dataChannel?.send(RTCDataChannelMessage(readyEnv));
+                await _sendWithBackpressure(readyEnv);
                 _log('📨 SENT RECEIVER READY', sessionId);
               }();
               return;
@@ -381,7 +373,7 @@ class WebRTCService {
       'total': total,
       'chunkSize': _chunkSize,
     });
-    _dataChannel!.send(RTCDataChannelMessage(startEnv));
+    await _sendWithBackpressure(startEnv);
     // Chunks
     int offset = 0;
     while (offset < total) {
@@ -395,18 +387,9 @@ class WebRTCService {
         'seq': offset ~/ _chunkSize,
         'data': chunk,
       });
-      _dataChannel!.send(RTCDataChannelMessage(chunkEnv));
+      await _sendWithBackpressure(chunkEnv);
       offset = end;
 
-      // Backpressure: wait if buffered amount is high
-      if ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
-        _log('⏳ WAITING BUFFER TO DRAIN', {'buffered': _dataChannel!.bufferedAmount});
-        _bufferLowCompleter = Completer<void>();
-        await _bufferLowCompleter!.future.timeout(Duration(seconds: 5), onTimeout: () {
-          _log('⚠️ BUFFER LOW TIMEOUT, CONTINUING');
-          _bufferLowCompleter = null;
-        });
-      }
     }
     // End envelope
     final endEnv = jsonEncode({
@@ -415,7 +398,7 @@ class WebRTCService {
       'mode': 'end',
       'id': id,
     });
-    _dataChannel!.send(RTCDataChannelMessage(endEnv));
+    await _sendWithBackpressure(endEnv);
   }
 
   void _handleClipboardPayload(String payload) {
@@ -450,49 +433,49 @@ class WebRTCService {
     _pendingCandidates.clear();
     _remoteDescriptionSet = false;
     _log('🔍 AFTER RESET - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
-    
     try {
-      // Quick synchronous cleanup first
-      _forceCleanup();
-      
-      // Close connections with individual try-catch blocks
-      if (_dataChannel != null) {
-        _log('📡 CLOSING EXISTING DATA CHANNEL');
-        try {
-          _dataChannel?.close();
-        } catch (e) {
-          _log('⚠️ ERROR CLOSING DATA CHANNEL (IGNORING)', e.toString());
-        }
-        _dataChannel = null;
-      }
-      
-      if (_peerConnection != null) {
-        _log('🔗 CLOSING EXISTING PEER CONNECTION');
-        try {
-          _peerConnection?.close();
-        } catch (e) {
-          _log('⚠️ ERROR CLOSING PEER CONNECTION (IGNORING)', e.toString());
-        }
-        _peerConnection = null;
-      }
-      
-      // Reinitialize with timeout protection
       await _initWithTimeout();
-      _log('✅ PEER CONNECTION RESET COMPLETE');
-    } catch (e) {
-      _log('❌ ERROR DURING RESET (FORCING CLEANUP)', e.toString());
-      _forceCleanup();
-      
-      // Try to reinitialize anyway
-      try {
-        await _initWithTimeout();
-        _log('✅ FORCED RESET RECOVERY SUCCESSFUL');
-      } catch (recoveryError) {
-        _log('❌ FORCED RESET RECOVERY FAILED', recoveryError.toString());
-      }
+      _log('✅ FORCED RESET RECOVERY SUCCESSFUL');
+    } catch (recoveryError) {
+      _log('❌ FORCED RESET RECOVERY FAILED', recoveryError.toString());
     } finally {
       _isResetting = false;
     }
+  }
+
+  // Backpressure-aware send helper for any JSON/text payloads over the data channel
+  Future<void> _sendWithBackpressure(String text, {int timeoutMs = 20000}) async {
+    final ch = _dataChannel;
+    if (ch == null) throw StateError('DataChannel not ready');
+
+    // Ensure threshold is set (idempotent)
+    ch.bufferedAmountLowThreshold = _bufferedLowThreshold;
+
+    // Wait for buffer to be below threshold before sending
+    Future<void> waitForLowBuffer() async {
+      try {
+        // Some platforms expose bufferedAmount; guard if not available
+        final current = ch.bufferedAmount;
+        if (current != null && current > _bufferedLowThreshold) {
+          _log('⏳ BACKPRESSURE: waiting for buffer to drain', {'buffered': current, 'threshold': _bufferedLowThreshold});
+          _bufferLowCompleter ??= Completer<void>();
+          try {
+            await _bufferLowCompleter!.future
+                .timeout(Duration(milliseconds: timeoutMs));
+          } on TimeoutException {
+            _log('⏰ BACKPRESSURE TIMEOUT, proceeding cautiously');
+          } finally {
+            _bufferLowCompleter = null;
+          }
+        }
+      } catch (_) {
+        // If metric unavailable, small pacing delay
+        await Future.delayed(Duration(milliseconds: 2));
+      }
+    }
+
+    await waitForLowBuffer();
+    ch.send(RTCDataChannelMessage(text));
   }
 
   Future<void> _initWithTimeout() async {
