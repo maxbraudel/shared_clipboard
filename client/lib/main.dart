@@ -22,7 +22,8 @@ void main() async {
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setPreventClose(true);
     await windowManager.setSkipTaskbar(true);
-    // DON'T call show() - keep it hidden
+    // Keep the window hidden on startup explicitly
+    await windowManager.hide();
   });
   
   // Initialize system tray after window is ready
@@ -44,6 +45,10 @@ class _BackgroundAppState extends State<BackgroundApp> with WindowListener {
   void initState() {
     super.initState();
     windowManager.addListener(this);
+    // Extra safety: ensure close is prevented and app starts hidden
+    windowManager.setPreventClose(true);
+    windowManager.setSkipTaskbar(true);
+    windowManager.hide();
   }
 
   @override

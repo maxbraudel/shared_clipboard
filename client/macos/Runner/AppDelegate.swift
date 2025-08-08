@@ -4,7 +4,8 @@ import FlutterMacOS
 @main
 class AppDelegate: FlutterAppDelegate {
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-    return true
+    // Keep app running in background when window is closed
+    return false
   }
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
@@ -14,6 +15,9 @@ class AppDelegate: FlutterAppDelegate {
   override func applicationDidFinishLaunching(_ notification: Notification) {
     super.applicationDidFinishLaunching(notification)
     
+    // Ensure the app starts with no visible window (menubar-only)
+    self.mainFlutterWindow?.orderOut(nil)
+
     // Register native file clipboard plugin using runtime lookup
     if let controller = mainFlutterWindow?.contentViewController as? FlutterViewController {
       // Use runtime to call the Objective-C plugin registration

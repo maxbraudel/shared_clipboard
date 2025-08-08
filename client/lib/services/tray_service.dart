@@ -10,14 +10,8 @@ class TrayService {
       print('Initializing system tray...');
       
       // Initialize system tray with icon
-      String iconPath = '';
-      if (Platform.isWindows) {
-        iconPath = 'assets/app_icon.ico';
-      } else if (Platform.isMacOS) {
-        iconPath = 'assets/app_icon.png';
-      } else if (Platform.isLinux) {
-        iconPath = 'assets/app_icon.png';
-      }
+      // Use bundled PNG for all platforms (ensure asset is declared in pubspec.yaml)
+      String iconPath = 'assets/icon.png';
 
       await _systemTray.initSystemTray(
         title: "Shared Clipboard",
