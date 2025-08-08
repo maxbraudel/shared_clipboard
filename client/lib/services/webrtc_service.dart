@@ -284,7 +284,12 @@ class WebRTCService {
     _dataChannel?.onMessage = (message) {
       // Support: proto v2 streaming (files), proto v1 chunked JSON payloads, and legacy single payload
       final text = message.text;
-      _log('📥 RECEIVED DATA MESSAGE (RECEIVER ROLE)', '${text.length} bytes');
+      _log('📥 RECEIVED DATA MESSAGE', {
+        'bytes': text.length,
+        'role': _pendingClipboardContent != null ? 'SENDER' : 'RECEIVER',
+        'peerId': _peerId,
+        'preview': text.length > 100 ? text.substring(0, 100) + '...' : text
+      });
       try {
         // Try to parse as protocol envelope
         final isJsonEnvelope = text.startsWith('{') && text.contains('"__sc_proto"');
@@ -297,31 +302,54 @@ class WebRTCService {
             if (mode == 'start' && sessionId != null) {
               // Ask user for directory immediately
               final filesMeta = (env['files'] as List).cast<Map<String, dynamic>>();
-              _log('🔰 START FILE STREAM SESSION', {'sessionId': sessionId, 'files': filesMeta.length});
-              () async {
-                final prepared = await _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
-                if (!prepared) {
-                  // Inform sender we cancelled so it can abort immediately
-                  final cancelEnv = jsonEncode({
+              _log('🔰 START FILE STREAM SESSION', {
+                'sessionId': sessionId, 
+                'files': filesMeta.length,
+                'role': 'RECEIVER',
+                'peerId': _peerId
+              });
+              
+              // CRITICAL: Use async IIFE with proper error handling
+              (() async {
+                try {
+                  final prepared = await _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
+                  if (!prepared) {
+                    // Inform sender we cancelled so it can abort immediately
+                    final cancelEnv = jsonEncode({
+                      '__sc_proto': 2,
+                      'kind': 'files',
+                      'mode': 'cancel',
+                      'sessionId': sessionId,
+                    });
+                    await _sendWithBackpressure(cancelEnv);
+                    _log('🚫 RECEIVER CANCELLED BEFORE READY', sessionId);
+                    return;
+                  }
+                  // Notify sender we are ready to receive chunks
+                  final readyEnv = jsonEncode({
                     '__sc_proto': 2,
                     'kind': 'files',
-                    'mode': 'cancel',
+                    'mode': 'ready',
                     'sessionId': sessionId,
                   });
-                  await _sendWithBackpressure(cancelEnv);
-                  _log('🚫 RECEIVER CANCELLED BEFORE READY', sessionId);
-                  return;
+                  await _sendWithBackpressure(readyEnv);
+                  _log('📨 SENT RECEIVER READY', sessionId);
+                } catch (e) {
+                  _log('❌ ERROR IN FILE STREAM START HANDLER', e.toString());
+                  // Send cancel on error
+                  try {
+                    final cancelEnv = jsonEncode({
+                      '__sc_proto': 2,
+                      'kind': 'files',
+                      'mode': 'cancel',
+                      'sessionId': sessionId,
+                    });
+                    await _sendWithBackpressure(cancelEnv);
+                  } catch (cancelError) {
+                    _log('❌ ERROR SENDING CANCEL', cancelError.toString());
+                  }
                 }
-                // Notify sender we are ready to receive chunks
-                final readyEnv = jsonEncode({
-                  '__sc_proto': 2,
-                  'kind': 'files',
-                  'mode': 'ready',
-                  'sessionId': sessionId,
-                });
-                await _sendWithBackpressure(readyEnv);
-                _log('📨 SENT RECEIVER READY', sessionId);
-              }();
+              })();
               return;
             }
             if (mode == 'ready' && sessionId != null) {
@@ -397,6 +425,7 @@ class WebRTCService {
           }
         }
         // Legacy single-message payload
+        _log('📋 PROCESSING LEGACY CLIPBOARD PAYLOAD', text.length);
         _handleClipboardPayload(text);
       } catch (e) {
         _log('❌ ERROR PROCESSING RECEIVED DATA', e.toString());
@@ -477,18 +506,31 @@ class WebRTCService {
 
   void _handleClipboardPayload(String payload) {
     try {
+      _log('🔍 DESERIALIZING CLIPBOARD PAYLOAD', {
+        'size': payload.length,
+        'role': 'RECEIVER',
+        'peerId': _peerId
+      });
+      
       final clipboardContent = _fileTransferService.deserializeClipboardContent(payload);
       if (clipboardContent.isFiles) {
-        _log('📁 RECEIVED FILES (JSON PAYLOAD)', '${clipboardContent.files.length} files');
+        _log('📁 RECEIVED FILES (JSON PAYLOAD)', {
+          'files': clipboardContent.files.length,
+          'fileNames': clipboardContent.files.map((f) => f.name).toList()
+        });
+        
+        // CRITICAL: Ensure file transfer service processes the files correctly
         _fileTransferService.setClipboardContent(clipboardContent);
         _log('✅ FILES HANDLED VIA EXISTING FLOW');
       } else {
-        _log('📝 RECEIVED TEXT', clipboardContent.text);
+        _log('📝 RECEIVED TEXT', clipboardContent.text.length > 100 ? 
+          clipboardContent.text.substring(0, 100) + '...' : clipboardContent.text);
         Clipboard.setData(ClipboardData(text: clipboardContent.text));
         _log('📋 TEXT CLIPBOARD UPDATED SUCCESSFULLY');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       _log('❌ ERROR PROCESSING RECEIVED DATA', e.toString());
+      _log('❌ STACK TRACE', stackTrace.toString());
     }
   }
 
@@ -651,11 +693,9 @@ class WebRTCService {
         return;
       }
       
-      // Set peer ID if provided
-      if (peerId != null) {
-        _peerId = peerId;
-        _log('🎯 CREATING OFFER FOR PEER', peerId);
-      }
+      // CRITICAL: Set peer ID immediately for sending role
+      _peerId = peerId;
+      _log('🎯 CREATING OFFER FOR PEER', peerId);
       
       // Read current clipboard content (text or files)
       try {
@@ -731,7 +771,10 @@ class WebRTCService {
         return;
       }
       
+      // CRITICAL: Set peer ID immediately for receiving role
       _peerId = from;
+      _log('🎯 HANDLING OFFER FROM PEER', from);
+      
       final offerSdp = offer['sdp'] as String?;
       final offerType = offer['type'] as String? ?? 'offer';
 
