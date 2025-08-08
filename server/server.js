@@ -150,19 +150,12 @@ io.on('connection', (socket) => {
       }
     }
     
-    // CRITICAL: Always reset readyToShare state on registration to prevent stale state
     devices[socket.id] = { 
       readyToShare: false, 
       signalingData: null,
       deviceName: deviceName,
       platform: data && data.platform ? data.platform : 'unknown'
     };
-    
-    // CRITICAL: Clear any stale ready-to-share state for this device
-    log('🧹 CLEARING STALE READY-TO-SHARE STATE ON REGISTRATION', {
-      deviceId: socket.id.substring(0, 8) + '...',
-      deviceName: deviceName
-    });
     
     log('📢 BROADCASTING device-connected', {
       newDeviceId: socket.id.substring(0, 8) + '...',
