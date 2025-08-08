@@ -198,7 +198,7 @@ class WebRTCService {
     await _sendWithBackpressure(endEnv);
   }
 
-  Future<void> init() async {
+  Future<void> init({bool preserveClipboardContent = false}) async {
     if (_isInitialized) {
       _log('⚠️ ALREADY INITIALIZED, SKIPPING');
       return;
@@ -492,7 +492,7 @@ class WebRTCService {
     }
   }
 
-  Future<void> _resetConnection() async {
+  Future<void> _resetConnection({bool preserveClipboardContent = false}) async {
     // Prevent multiple simultaneous resets
     if (_isResetting) {
       _log('⚠️ RESET ALREADY IN PROGRESS, SKIPPING');
@@ -500,7 +500,10 @@ class WebRTCService {
     }
     
     _isResetting = true;
-    _log('🔄 RESETTING PEER CONNECTION FOR NEW SHARE');
+    _log('🔄 RESETTING PEER CONNECTION FOR NEW SHARE', {
+      'preserveClipboard': preserveClipboardContent,
+      'hasClipboard': _pendingClipboardContent != null
+    });
     
     // Reset candidate queue and remote description flag
     _log('🔍 BEFORE RESET - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
@@ -508,7 +511,7 @@ class WebRTCService {
     _remoteDescriptionSet = false;
     _log('🔍 AFTER RESET - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
     try {
-      await _initWithTimeout();
+      await _initWithTimeout(preserveClipboardContent: preserveClipboardContent);
       _log('✅ FORCED RESET RECOVERY SUCCESSFUL');
     } catch (recoveryError) {
       _log('❌ FORCED RESET RECOVERY FAILED', recoveryError.toString());
@@ -616,17 +619,20 @@ class WebRTCService {
     }
   }
 
-  Future<void> _initWithTimeout() async {
+  Future<void> _initWithTimeout({bool preserveClipboardContent = false}) async {
     return Future.any([
-      init(),
+      init(preserveClipboardContent: preserveClipboardContent),
       Future.delayed(Duration(seconds: 3)).then((_) => throw TimeoutException('Init timeout', Duration(seconds: 3))),
     ]);
   }
 
-  void _forceCleanup() {
+  void _forceCleanup({bool preserveClipboardContent = false}) {
     _dataChannel = null;
     _peerConnection = null;
-    _pendingClipboardContent = null;
+    // Only clear clipboard content if we're not preserving it (i.e., not the sharing device)
+    if (!preserveClipboardContent) {
+      _pendingClipboardContent = null;
+    }
     _peerId = null;
     _isInitialized = false;
     _pendingCandidates.clear();
@@ -637,8 +643,8 @@ class WebRTCService {
     try {
       _log('🎯 createOffer CALLED', peerId);
       
-      // Reset connection state for clean start
-      await _resetConnection();
+      // Reset connection state for clean start - preserve clipboard content since we're the sharing device
+      await _resetConnection(preserveClipboardContent: true);
       
       if (_peerConnection == null) {
         _log('❌ ERROR: PeerConnection is null after reset, cannot create offer');
@@ -717,8 +723,8 @@ class WebRTCService {
     _log('🔍 CURRENT STATE - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
     
     try {
-      // Reset connection state for clean start
-      await _resetConnection();
+      // Reset connection state for clean start - clear clipboard content since we're the receiving device
+      await _resetConnection(preserveClipboardContent: false);
       
       if (_peerConnection == null) {
         _log('❌ ERROR: PeerConnection is null after reset, cannot handle offer');
