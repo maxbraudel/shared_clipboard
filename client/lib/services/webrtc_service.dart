@@ -24,17 +24,11 @@ class WebRTCService {
 
   // Chunking protocol settings and state
   static const int _chunkSize = 16 * 1024; // 16 KB safe default for data channels
-  static const int _bufferedLowThreshold = 512 * 1024; // 512 KB backpressure threshold (more conservative)
+  static const int _bufferedLowThreshold = 64 * 1024; // 64 KB backpressure threshold
   final Map<String, StringBuffer> _rxBuffers = {};
   final Map<String, int> _rxReceivedBytes = {};
   final Map<String, int> _rxTotalBytes = {};
   Completer<void>? _bufferLowCompleter;
-  // Fallback pacing accumulator when bufferedAmount isn't reliable
-  int _pacingBytes = 0;
-  int _rateBytesWindow = 0;
-  DateTime _rateWindowStart = DateTime.now();
-  int _messagesSent = 0;
-  int _lastReceivedAck = 0;
 
   // Streaming files state (proto v2)
   final Map<String, _FileSession> _fileSessions = {};
@@ -74,7 +68,7 @@ class WebRTCService {
       'sessionId': sessionId,
       'files': filesMeta,
     });
-    await _sendWithBackpressure(startEnv);
+    _dataChannel!.send(RTCDataChannelMessage(startEnv));
 
     // Wait for receiver to prepare and acknowledge readiness
     final ready = Completer<void>();
@@ -89,94 +83,34 @@ class WebRTCService {
       return;
     }
 
-    // Stream each file from disk with extreme rate limiting to prevent SCTP overflow
+    // Stream each file
     for (int i = 0; i < content.files.length; i++) {
       final f = content.files[i];
-      _log('🚚 START STREAMING FILE', {'index': i, 'name': f.name, 'size': f.size});
-      int sent = 0;
-      
-      if (f.path.isNotEmpty) {
-        final file = File(f.path);
-        if (await file.exists()) {
-          final raf = await file.open(mode: FileMode.read);
-          try {
-            while (true) {
-              final read = await raf.read(_chunkSize);
-              if (read.isEmpty) break;
-              
-              final env = jsonEncode({
-                '__sc_proto': 2,
-                'kind': 'files',
-                'mode': 'file_chunk',
-                'sessionId': sessionId,
-                'fileIndex': i,
-                'data': base64Encode(read),
-              });
-              await _sendWithBackpressure(env);
-              
-              // Extreme rate limiting: 50ms delay between every chunk
-              await Future.delayed(Duration(milliseconds: 50));
-              
-              sent += read.length;
-              if (sent % (1024 * 1024) < _chunkSize) {
-                _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size});
-              }
-            }
-          } finally {
-            await raf.close();
-          }
-        } else {
-          _log('⚠️ FILE PATH NOT FOUND, FALLING BACK TO MEMORY', f.path);
-        }
-      }
-      // Fallback to preloaded bytes if no valid path
-      if (sent == 0 && f.content.isNotEmpty) {
-        final bytes = f.content;
-        int offset = 0;
-        while (offset < bytes.length) {
-          final end = (offset + _chunkSize > bytes.length) ? bytes.length : offset + _chunkSize;
-          final chunkBytes = bytes.sublist(offset, end);
-          
-          final env = jsonEncode({
-            '__sc_proto': 2,
-            'kind': 'files',
-            'mode': 'file_chunk',
-            'sessionId': sessionId,
-            'fileIndex': i,
-            'data': base64Encode(chunkBytes),
-          });
-          await _sendWithBackpressure(env);
-          
-          // Extreme rate limiting: 50ms delay between every chunk
-          await Future.delayed(Duration(milliseconds: 50));
-          
-          offset = end;
-          sent = offset;
-          if (sent % (1024 * 1024) < _chunkSize) {
-            _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size});
-          }
-        }
-      }
-      // Verify integrity before declaring completion
-      if (f.size > 0 && sent < f.size) {
-        _log('🛑 SENDER DETECTED PREMATURE EOF', {
-          'file': f.name,
-          'sent': sent,
-          'expected': f.size,
-          'path': f.path
-        });
-        // Inform receiver and abort whole session to avoid corrupted files
-        final cancelEnv = jsonEncode({
+      final bytes = f.content; // already read in FileTransferService
+      int offset = 0;
+      while (offset < bytes.length) {
+        final end = (offset + _chunkSize > bytes.length) ? bytes.length : offset + _chunkSize;
+        final chunkBytes = bytes.sublist(offset, end);
+        final env = jsonEncode({
           '__sc_proto': 2,
           'kind': 'files',
-          'mode': 'cancel',
+          'mode': 'file_chunk',
           'sessionId': sessionId,
+          'fileIndex': i,
+          'data': base64Encode(chunkBytes),
         });
-        await _sendWithBackpressure(cancelEnv);
-        _log('🚫 SESSION CANCELLED DUE TO PREMATURE EOF', sessionId);
-        return;
+        _dataChannel!.send(RTCDataChannelMessage(env));
+        offset = end;
+
+        if ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
+          _log('⏳ WAITING BUFFER TO DRAIN', {'buffered': _dataChannel!.bufferedAmount});
+          _bufferLowCompleter = Completer<void>();
+          await _bufferLowCompleter!.future.timeout(Duration(seconds: 5), onTimeout: () {
+            _log('⚠️ BUFFER LOW TIMEOUT, CONTINUING');
+            _bufferLowCompleter = null;
+          });
+        }
       }
-      _log('🏁 SENDER FILE COMPLETE', {'file': f.name, 'sent': sent, 'expected': f.size});
       // End of this file
       final fileEnd = jsonEncode({
         '__sc_proto': 2,
@@ -185,7 +119,7 @@ class WebRTCService {
         'sessionId': sessionId,
         'fileIndex': i,
       });
-      await _sendWithBackpressure(fileEnd);
+      _dataChannel!.send(RTCDataChannelMessage(fileEnd));
     }
 
     // End session
@@ -195,10 +129,10 @@ class WebRTCService {
       'mode': 'end',
       'sessionId': sessionId,
     });
-    await _sendWithBackpressure(endEnv);
+    _dataChannel!.send(RTCDataChannelMessage(endEnv));
   }
 
-  Future<void> init({bool preserveClipboardContent = false}) async {
+  Future<void> init() async {
     if (_isInitialized) {
       _log('⚠️ ALREADY INITIALIZED, SKIPPING');
       return;
@@ -284,12 +218,7 @@ class WebRTCService {
     _dataChannel?.onMessage = (message) {
       // Support: proto v2 streaming (files), proto v1 chunked JSON payloads, and legacy single payload
       final text = message.text;
-      _log('📥 RECEIVED DATA MESSAGE', {
-        'bytes': text.length,
-        'role': _pendingClipboardContent != null ? 'SENDER' : 'RECEIVER',
-        'peerId': _peerId,
-        'preview': text.length > 100 ? text.substring(0, 100) + '...' : text
-      });
+      _log('📥 RECEIVED DATA MESSAGE (RECEIVER ROLE)', '${text.length} bytes');
       try {
         // Try to parse as protocol envelope
         final isJsonEnvelope = text.startsWith('{') && text.contains('"__sc_proto"');
@@ -302,54 +231,31 @@ class WebRTCService {
             if (mode == 'start' && sessionId != null) {
               // Ask user for directory immediately
               final filesMeta = (env['files'] as List).cast<Map<String, dynamic>>();
-              _log('🔰 START FILE STREAM SESSION', {
-                'sessionId': sessionId, 
-                'files': filesMeta.length,
-                'role': 'RECEIVER',
-                'peerId': _peerId
-              });
-              
-              // CRITICAL: Use async IIFE with proper error handling
-              (() async {
-                try {
-                  final prepared = await _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
-                  if (!prepared) {
-                    // Inform sender we cancelled so it can abort immediately
-                    final cancelEnv = jsonEncode({
-                      '__sc_proto': 2,
-                      'kind': 'files',
-                      'mode': 'cancel',
-                      'sessionId': sessionId,
-                    });
-                    await _sendWithBackpressure(cancelEnv);
-                    _log('🚫 RECEIVER CANCELLED BEFORE READY', sessionId);
-                    return;
-                  }
-                  // Notify sender we are ready to receive chunks
-                  final readyEnv = jsonEncode({
+              _log('🔰 START FILE STREAM SESSION', {'sessionId': sessionId, 'files': filesMeta.length});
+              () async {
+                final prepared = await _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
+                if (!prepared) {
+                  // Inform sender we cancelled so it can abort immediately
+                  final cancelEnv = jsonEncode({
                     '__sc_proto': 2,
                     'kind': 'files',
-                    'mode': 'ready',
+                    'mode': 'cancel',
                     'sessionId': sessionId,
                   });
-                  await _sendWithBackpressure(readyEnv);
-                  _log('📨 SENT RECEIVER READY', sessionId);
-                } catch (e) {
-                  _log('❌ ERROR IN FILE STREAM START HANDLER', e.toString());
-                  // Send cancel on error
-                  try {
-                    final cancelEnv = jsonEncode({
-                      '__sc_proto': 2,
-                      'kind': 'files',
-                      'mode': 'cancel',
-                      'sessionId': sessionId,
-                    });
-                    await _sendWithBackpressure(cancelEnv);
-                  } catch (cancelError) {
-                    _log('❌ ERROR SENDING CANCEL', cancelError.toString());
-                  }
+                  _dataChannel?.send(RTCDataChannelMessage(cancelEnv));
+                  _log('🚫 RECEIVER CANCELLED BEFORE READY', sessionId);
+                  return;
                 }
-              })();
+                // Notify sender we are ready to receive chunks
+                final readyEnv = jsonEncode({
+                  '__sc_proto': 2,
+                  'kind': 'files',
+                  'mode': 'ready',
+                  'sessionId': sessionId,
+                });
+                _dataChannel?.send(RTCDataChannelMessage(readyEnv));
+                _log('📨 SENT RECEIVER READY', sessionId);
+              }();
               return;
             }
             if (mode == 'ready' && sessionId != null) {
@@ -425,7 +331,6 @@ class WebRTCService {
           }
         }
         // Legacy single-message payload
-        _log('📋 PROCESSING LEGACY CLIPBOARD PAYLOAD', text.length);
         _handleClipboardPayload(text);
       } catch (e) {
         _log('❌ ERROR PROCESSING RECEIVED DATA', e.toString());
@@ -476,7 +381,7 @@ class WebRTCService {
       'total': total,
       'chunkSize': _chunkSize,
     });
-    await _sendWithBackpressure(startEnv);
+    _dataChannel!.send(RTCDataChannelMessage(startEnv));
     // Chunks
     int offset = 0;
     while (offset < total) {
@@ -490,9 +395,18 @@ class WebRTCService {
         'seq': offset ~/ _chunkSize,
         'data': chunk,
       });
-      await _sendWithBackpressure(chunkEnv);
+      _dataChannel!.send(RTCDataChannelMessage(chunkEnv));
       offset = end;
 
+      // Backpressure: wait if buffered amount is high
+      if ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
+        _log('⏳ WAITING BUFFER TO DRAIN', {'buffered': _dataChannel!.bufferedAmount});
+        _bufferLowCompleter = Completer<void>();
+        await _bufferLowCompleter!.future.timeout(Duration(seconds: 5), onTimeout: () {
+          _log('⚠️ BUFFER LOW TIMEOUT, CONTINUING');
+          _bufferLowCompleter = null;
+        });
+      }
     }
     // End envelope
     final endEnv = jsonEncode({
@@ -501,40 +415,27 @@ class WebRTCService {
       'mode': 'end',
       'id': id,
     });
-    await _sendWithBackpressure(endEnv);
+    _dataChannel!.send(RTCDataChannelMessage(endEnv));
   }
 
   void _handleClipboardPayload(String payload) {
     try {
-      _log('🔍 DESERIALIZING CLIPBOARD PAYLOAD', {
-        'size': payload.length,
-        'role': 'RECEIVER',
-        'peerId': _peerId
-      });
-      
       final clipboardContent = _fileTransferService.deserializeClipboardContent(payload);
       if (clipboardContent.isFiles) {
-        _log('📁 RECEIVED FILES (JSON PAYLOAD)', {
-          'files': clipboardContent.files.length,
-          'fileNames': clipboardContent.files.map((f) => f.name).toList()
-        });
-        
-        // CRITICAL: Ensure file transfer service processes the files correctly
+        _log('📁 RECEIVED FILES (JSON PAYLOAD)', '${clipboardContent.files.length} files');
         _fileTransferService.setClipboardContent(clipboardContent);
         _log('✅ FILES HANDLED VIA EXISTING FLOW');
       } else {
-        _log('📝 RECEIVED TEXT', clipboardContent.text.length > 100 ? 
-          clipboardContent.text.substring(0, 100) + '...' : clipboardContent.text);
+        _log('📝 RECEIVED TEXT', clipboardContent.text);
         Clipboard.setData(ClipboardData(text: clipboardContent.text));
         _log('📋 TEXT CLIPBOARD UPDATED SUCCESSFULLY');
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       _log('❌ ERROR PROCESSING RECEIVED DATA', e.toString());
-      _log('❌ STACK TRACE', stackTrace.toString());
     }
   }
 
-  Future<void> _resetConnection({bool preserveClipboardContent = false}) async {
+  Future<void> _resetConnection() async {
     // Prevent multiple simultaneous resets
     if (_isResetting) {
       _log('⚠️ RESET ALREADY IN PROGRESS, SKIPPING');
@@ -542,178 +443,110 @@ class WebRTCService {
     }
     
     _isResetting = true;
-    _log('🔄 RESETTING PEER CONNECTION FOR NEW SHARE', {
-      'preserveClipboard': preserveClipboardContent,
-      'hasClipboard': _pendingClipboardContent != null
-    });
+    _log('🔄 RESETTING PEER CONNECTION FOR NEW SHARE');
     
     // Reset candidate queue and remote description flag
     _log('🔍 BEFORE RESET - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
     _pendingCandidates.clear();
     _remoteDescriptionSet = false;
     _log('🔍 AFTER RESET - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
+    
     try {
-      await _initWithTimeout(preserveClipboardContent: preserveClipboardContent);
-      _log('✅ FORCED RESET RECOVERY SUCCESSFUL');
-    } catch (recoveryError) {
-      _log('❌ FORCED RESET RECOVERY FAILED', recoveryError.toString());
+      // Quick synchronous cleanup first
+      _forceCleanup();
+      
+      // Close connections with individual try-catch blocks
+      if (_dataChannel != null) {
+        _log('📡 CLOSING EXISTING DATA CHANNEL');
+        try {
+          _dataChannel?.close();
+        } catch (e) {
+          _log('⚠️ ERROR CLOSING DATA CHANNEL (IGNORING)', e.toString());
+        }
+        _dataChannel = null;
+      }
+      
+      if (_peerConnection != null) {
+        _log('🔗 CLOSING EXISTING PEER CONNECTION');
+        try {
+          _peerConnection?.close();
+        } catch (e) {
+          _log('⚠️ ERROR CLOSING PEER CONNECTION (IGNORING)', e.toString());
+        }
+        _peerConnection = null;
+      }
+      
+      // Reinitialize with timeout protection
+      await _initWithTimeout();
+      _log('✅ PEER CONNECTION RESET COMPLETE');
+    } catch (e) {
+      _log('❌ ERROR DURING RESET (FORCING CLEANUP)', e.toString());
+      _forceCleanup();
+      
+      // Try to reinitialize anyway
+      try {
+        await _initWithTimeout();
+        _log('✅ FORCED RESET RECOVERY SUCCESSFUL');
+      } catch (recoveryError) {
+        _log('❌ FORCED RESET RECOVERY FAILED', recoveryError.toString());
+      }
     } finally {
       _isResetting = false;
     }
   }
 
-  // Backpressure-aware send helper for any JSON/text payloads over the data channel
-  Future<void> _sendWithBackpressure(String text, {int timeoutMs = 20000}) async {
-    final ch = _dataChannel;
-    if (ch == null) throw StateError('DataChannel not ready');
-
-    // Ensure threshold is set (idempotent)
-    ch.bufferedAmountLowThreshold = _bufferedLowThreshold;
-
-    // Wait for buffer to be below threshold before sending
-    Future<void> waitForLowBuffer() async {
-      try {
-        // Some platforms expose bufferedAmount; guard if not available
-        final current = ch.bufferedAmount;
-        if (current != null && current > _bufferedLowThreshold) {
-          _log('⏳ BACKPRESSURE: waiting for buffer to drain', {'buffered': current, 'threshold': _bufferedLowThreshold});
-          _bufferLowCompleter ??= Completer<void>();
-          try {
-            await _bufferLowCompleter!.future
-                .timeout(Duration(milliseconds: timeoutMs));
-          } on TimeoutException {
-            _log('⏰ BACKPRESSURE TIMEOUT, proceeding cautiously');
-          } finally {
-            _bufferLowCompleter = null;
-          }
-        } else if (current == null) {
-          // No metric: use conservative pacing every ~2MB
-          if (_pacingBytes > (2 * 1024 * 1024)) {
-            await Future.delayed(Duration(milliseconds: 25));
-            _pacingBytes = 0;
-          }
-        } else {
-          // Metric available and below threshold; also yield occasionally
-          if (_pacingBytes > (4 * 1024 * 1024)) {
-            await Future.delayed(Duration(milliseconds: 10));
-            _pacingBytes = 0;
-          }
-        }
-      } catch (_) {
-        // If metric unavailable, small pacing delay
-        if (_pacingBytes > (2 * 1024 * 1024)) {
-          await Future.delayed(Duration(milliseconds: 20));
-          _pacingBytes = 0;
-        } else {
-          await Future.delayed(Duration(milliseconds: 2));
-        }
-      }
-    }
-
-    await waitForLowBuffer();
-
-      // Much more aggressive rate limiting to prevent SCTP buffer overflow
-    final now = DateTime.now();
-    if (now.difference(_rateWindowStart).inMilliseconds > 200) {
-      _rateWindowStart = now;
-      _rateBytesWindow = 0;
-    }
-    // approximate size of this message
-    int msgBytes;
-    try {
-      msgBytes = utf8.encode(text).length;
-    } catch (_) {
-      msgBytes = text.length;
-    }
-    // Much more conservative: ~5 MB/s => 1 MB per 200ms window
-    const int windowCap = 1024 * 1024;
-    if (_rateBytesWindow + msgBytes > windowCap) {
-      final toWait = 200 - now.difference(_rateWindowStart).inMilliseconds;
-      if (toWait > 0) {
-        _log('⏸️ RATE LIMITING: waiting ${toWait}ms', {'windowBytes': _rateBytesWindow, 'msgBytes': msgBytes});
-        await Future.delayed(Duration(milliseconds: toWait));
-      }
-      _rateWindowStart = DateTime.now();
-      _rateBytesWindow = 0;
-    }
-
-    ch.send(RTCDataChannelMessage(text));
-    
-    // Log buffer state after send to detect overflow
-    try {
-      final buffered = ch.bufferedAmount;
-      if (buffered != null && buffered > 0) {
-        _log('📊 BUFFER STATE AFTER SEND', {'buffered': buffered, 'threshold': _bufferedLowThreshold});
-        if (buffered > _bufferedLowThreshold * 2) {
-          _log('⚠️ BUFFER DANGEROUSLY HIGH', {'buffered': buffered, 'threshold': _bufferedLowThreshold});
-        }
-      }
-    } catch (_) {}
-    
-    // Update pacing accumulator based on actual payload size
-    try {
-      final sz = utf8.encode(text).length;
-      _pacingBytes += sz;
-      _rateBytesWindow += sz;
-    } catch (_) {
-      _pacingBytes += text.length; // fallback estimate
-      _rateBytesWindow += text.length;
-    }
-  }
-
-  Future<void> _initWithTimeout({bool preserveClipboardContent = false}) async {
+  Future<void> _initWithTimeout() async {
     return Future.any([
-      init(preserveClipboardContent: preserveClipboardContent),
+      init(),
       Future.delayed(Duration(seconds: 3)).then((_) => throw TimeoutException('Init timeout', Duration(seconds: 3))),
     ]);
   }
 
-  void _forceCleanup({bool preserveClipboardContent = false}) {
+  void _forceCleanup() {
     _dataChannel = null;
     _peerConnection = null;
-    // CRITICAL: Always clear clipboard content to prevent stale file caching
-    // Only preserve during the same connection, not across different transfers
     _pendingClipboardContent = null;
     _peerId = null;
     _isInitialized = false;
     _pendingCandidates.clear();
     _remoteDescriptionSet = false;
-    
-    _log('🧹 FORCE CLEANUP COMPLETED', {
-      'preserveClipboardContent': preserveClipboardContent,
-      'clipboardCleared': true
-    });
   }
 
   Future<void> createOffer(String? peerId) async {
     try {
       _log('🎯 createOffer CALLED', peerId);
       
-      // CRITICAL: Always read fresh clipboard content, don't preserve old content
-      await _resetConnection(preserveClipboardContent: false);
+      // Reset connection state for clean start
+      await _resetConnection();
+      
       if (_peerConnection == null) {
         _log('❌ ERROR: PeerConnection is null after reset, cannot create offer');
         return;
       }
       
-      // CRITICAL: Set peer ID immediately for sending role
-      _peerId = peerId;
-      _log('🎯 CREATING OFFER FOR PEER', peerId);
+      // Set peer ID if provided
+      if (peerId != null) {
+        _peerId = peerId;
+        _log('🎯 CREATING OFFER FOR PEER', peerId);
+      }
       
-      // CRITICAL: Always read fresh clipboard content for each offer
+      // Read current clipboard content (text or files)
       try {
-        _log('📋 READING FRESH CLIPBOARD FOR OFFER');
+        _log('📋 READING CLIPBOARD FOR OFFER');
         final clipboardContent = await _fileTransferService.getClipboardContent();
-        _pendingClipboardContent = clipboardContent;
-        _log('📋 FRESH CLIPBOARD CONTENT READ', {
-          'isFiles': clipboardContent.isFiles,
-          'fileCount': clipboardContent.isFiles ? clipboardContent.files.length : 0,
-          'textLength': clipboardContent.isFiles ? 0 : clipboardContent.text.length,
-          'fileNames': clipboardContent.isFiles ? clipboardContent.files.map((f) => f.name).toList() : []
-        });
+        
+        if (clipboardContent.isFiles) {
+          _log('📁 FOUND FILES IN CLIPBOARD', '${clipboardContent.files.length} files');
+          _pendingClipboardContent = clipboardContent; // we'll stream them
+          _log('📦 FILES READY FOR STREAMING', {'count': clipboardContent.files.length});
+        } else if (clipboardContent.text.isNotEmpty) {
+          _log('📝 FOUND TEXT IN CLIPBOARD', clipboardContent.text);
+          _pendingClipboardContent = clipboardContent; // will serialize at send
+        } else {
+          _log('❌ NO CLIPBOARD CONTENT TO SHARE');
+        }
       } catch (e) {
         _log('❌ ERROR READING CLIPBOARD', e.toString());
-        _pendingClipboardContent = ClipboardContent.text('Error reading clipboard');
       }
       
       // Create data channel
@@ -763,18 +596,15 @@ class WebRTCService {
     _log('🔍 CURRENT STATE - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
     
     try {
-      // Reset connection state for clean start - clear clipboard content since we're the receiving device
-      await _resetConnection(preserveClipboardContent: false);
+      // Reset connection state for clean start
+      await _resetConnection();
       
       if (_peerConnection == null) {
         _log('❌ ERROR: PeerConnection is null after reset, cannot handle offer');
         return;
       }
       
-      // CRITICAL: Set peer ID immediately for receiving role
       _peerId = from;
-      _log('🎯 HANDLING OFFER FROM PEER', from);
-      
       final offerSdp = offer['sdp'] as String?;
       final offerType = offer['type'] as String? ?? 'offer';
 
