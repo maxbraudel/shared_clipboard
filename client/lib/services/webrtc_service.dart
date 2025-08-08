@@ -102,13 +102,19 @@ class WebRTCService {
         _dataChannel!.send(RTCDataChannelMessage(env));
         offset = end;
 
-        if ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
+        // Proper backpressure handling - wait indefinitely for buffer to drain
+        while ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
           _log('⏳ WAITING BUFFER TO DRAIN', {'buffered': _dataChannel!.bufferedAmount});
           _bufferLowCompleter = Completer<void>();
-          await _bufferLowCompleter!.future.timeout(Duration(seconds: 5), onTimeout: () {
-            _log('⚠️ BUFFER LOW TIMEOUT, CONTINUING');
-            _bufferLowCompleter = null;
-          });
+          try {
+            // Wait for buffer to drain - no timeout to prevent data loss
+            await _bufferLowCompleter!.future;
+            _log('✅ BUFFER DRAINED, CONTINUING TRANSFER');
+          } catch (e) {
+            _log('❌ BUFFER DRAIN ERROR', e.toString());
+            // If there's an error, wait a bit and retry
+            await Future.delayed(Duration(milliseconds: 100));
+          }
         }
       }
       // End of this file
@@ -202,7 +208,7 @@ class WebRTCService {
     
     // Backpressure: fire completer when buffered amount goes low
     _dataChannel?.onBufferedAmountLow = (int amount) {
-      _log('📉 DATA CHANNEL BUFFERED AMOUNT LOW');
+      _log('📉 DATA CHANNEL BUFFERED AMOUNT LOW', {'amount': amount});
       _bufferLowCompleter?.complete();
       _bufferLowCompleter = null;
     };
@@ -399,13 +405,18 @@ class WebRTCService {
       offset = end;
 
       // Backpressure: wait if buffered amount is high
-      if ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
-        _log('⏳ WAITING BUFFER TO DRAIN', {'buffered': _dataChannel!.bufferedAmount});
+      while ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
+        _log('⏳ WAITING BUFFER TO DRAIN (LARGE MESSAGE)', {'buffered': _dataChannel!.bufferedAmount});
         _bufferLowCompleter = Completer<void>();
-        await _bufferLowCompleter!.future.timeout(Duration(seconds: 5), onTimeout: () {
-          _log('⚠️ BUFFER LOW TIMEOUT, CONTINUING');
-          _bufferLowCompleter = null;
-        });
+        try {
+          // Wait for buffer to drain - no timeout to prevent data loss
+          await _bufferLowCompleter!.future;
+          _log('✅ BUFFER DRAINED, CONTINUING LARGE MESSAGE');
+        } catch (e) {
+          _log('❌ BUFFER DRAIN ERROR (LARGE MESSAGE)', e.toString());
+          // If there's an error, wait a bit and retry
+          await Future.delayed(Duration(milliseconds: 100));
+        }
       }
     }
     // End envelope
