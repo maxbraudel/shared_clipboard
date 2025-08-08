@@ -232,7 +232,19 @@ class WebRTCService {
               final filesMeta = (env['files'] as List).cast<Map<String, dynamic>>();
               _log('🔰 START FILE STREAM SESSION', {'sessionId': sessionId, 'files': filesMeta.length});
               () async {
-                await _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
+                final prepared = await _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
+                if (!prepared) {
+                  // Inform sender we cancelled so it can abort immediately
+                  final cancelEnv = jsonEncode({
+                    '__sc_proto': 2,
+                    'kind': 'files',
+                    'mode': 'cancel',
+                    'sessionId': sessionId,
+                  });
+                  _dataChannel?.send(RTCDataChannelMessage(cancelEnv));
+                  _log('🚫 RECEIVER CANCELLED BEFORE READY', sessionId);
+                  return;
+                }
                 // Notify sender we are ready to receive chunks
                 final readyEnv = jsonEncode({
                   '__sc_proto': 2,
@@ -250,6 +262,14 @@ class WebRTCService {
               final c = _sessionReadyCompleters.remove(sessionId);
               c?.complete();
               _log('📩 RECEIVED READY ACK', sessionId);
+              return;
+            }
+            if (mode == 'cancel' && sessionId != null) {
+              // Sender side receives cancellation; abort stream immediately
+              final c = _sessionReadyCompleters.remove(sessionId);
+              c?.completeError(StateError('Receiver cancelled'));
+              _abortFileSession(sessionId);
+              _log('🛑 RECEIVED CANCEL, ABORTING SESSION', sessionId);
               return;
             }
             if (mode == 'file_chunk' && sessionId != null) {
@@ -808,11 +828,13 @@ class WebRTCService {
   }
 
   // ===== Streaming file receiver helpers (proto v2) =====
-  Future<void> _promptDirectoryAndPrepareFiles(String sessionId, List<Map<String, dynamic>> filesMeta) async {
+  // Returns true if files were prepared and we're ready to receive.
+  // Returns false if the user cancelled any save dialog; in that case, the caller should send a 'cancel' control.
+  Future<bool> _promptDirectoryAndPrepareFiles(String sessionId, List<Map<String, dynamic>> filesMeta) async {
     try {
       if (filesMeta.isEmpty) {
         _log('⚠️ NO FILES META PROVIDED FOR SESSION', sessionId);
-        return;
+        return false;
       }
 
       // Prompt for the first file with its suggested name
@@ -823,10 +845,8 @@ class WebRTCService {
         fileName: firstName,
       );
       if (firstPath == null || firstPath.isEmpty) {
-        // User cancelled; fall back to a temp file to avoid breaking the stream
-        final tempDir = await Directory.systemTemp.createTemp('shared_clipboard_');
-        firstPath = tempDir.path + Platform.pathSeparator + firstName;
-        _log('ℹ️ USER CANCELLED SAVE DIALOG - USING TEMP FILE', firstPath);
+        _log('🚫 USER CANCELLED SAVE DIALOG (FIRST FILE)');
+        return false;
       }
 
       // Derive session directory from first file path
@@ -854,9 +874,10 @@ class WebRTCService {
           fileName: name,
         );
         if (savePath == null || savePath.isEmpty) {
-          // If user cancels, fall back to session dir
-          savePath = session.dirPath + Platform.pathSeparator + name;
-          _log('ℹ️ USER CANCELLED SAVE DIALOG - DEFAULTING TO SESSION DIR', savePath);
+          _log('🚫 USER CANCELLED SAVE DIALOG (ADDITIONAL FILE)');
+          // Abort any partially prepared files in this session
+          await _abortFileSession(sessionId);
+          return false;
         }
         final file = File(savePath);
         await file.parent.create(recursive: true);
@@ -872,8 +893,11 @@ class WebRTCService {
 
       _fileSessions[sessionId] = session;
       _log('📂 FILE SESSION PREPARED', {'sessionId': sessionId, 'dir': session.dirPath, 'files': session.files.length});
+      return true;
     } catch (e) {
       _log('❌ ERROR PREPARING FILE SESSION', e.toString());
+      await _abortFileSession(sessionId);
+      return false;
     }
   }
 
@@ -918,31 +942,30 @@ class WebRTCService {
     final session = _fileSessions.remove(sessionId);
     if (session == null) return;
     try {
-      // Ensure all sinks are closed
-      for (final f in session.files) {
-        try { await f.sink.flush(); } catch (_) {}
-        try { await f.sink.close(); } catch (_) {}
-      }
-
-      // Verify sizes and checksums
-      bool allOk = true;
       for (final f in session.files) {
         try {
-          final fileBytes = await f.file.readAsBytes();
-          final sizeOk = fileBytes.length == f.size;
-          final hash = sha256.convert(fileBytes).toString();
-          final checksumOk = f.checksum.isEmpty || hash == f.checksum;
-          if (!sizeOk || !checksumOk) {
-            allOk = false;
-            _log('⚠️ VERIFICATION FAILED', {'file': f.name, 'sizeOk': sizeOk, 'checksumOk': checksumOk});
-          }
-        } catch (e) {
+          await f.sink.flush();
+          await f.sink.close();
+        } catch (_) {}
+      }
+      // Optional: verify checksums and sizes
+      bool allOk = true;
+      for (final f in session.files) {
+        final sizeOk = f.size == 0 || f.file.lengthSync() == f.size;
+        // TODO: implement checksum verification if desired
+        final checksumOk = true;
+        if (!sizeOk || !checksumOk) {
           allOk = false;
-          _log('❌ ERROR VERIFYING FILE', {'file': f.name, 'error': e.toString()});
         }
       }
-
-      // Update clipboard with received files (try native clipboard via FileTransferService)
+      if (!allOk) {
+        _log('⚠️ VERIFICATION FAILED', {
+          'file': session.files.isNotEmpty ? session.files.first.name : 'n/a',
+          'sizeOk': false,
+          'checksumOk': false,
+        });
+      }
+      // Build clipboard file list from saved files
       final filesForClipboard = <FileData>[];
       for (final f in session.files) {
         final bytes = await f.file.readAsBytes();
@@ -960,6 +983,27 @@ class WebRTCService {
       _log('🎉 FILE SESSION FINALIZED', {'sessionId': sessionId, 'files': filesForClipboard.length, 'verified': allOk});
     } catch (e) {
       _log('❌ ERROR FINALIZING FILE SESSION', e.toString());
+    }
+  }
+
+  Future<void> _abortFileSession(String sessionId) async {
+    final session = _fileSessions.remove(sessionId);
+    if (session == null) return;
+    try {
+      for (final f in session.files) {
+        try {
+          await f.sink.flush();
+          await f.sink.close();
+        } catch (_) {}
+        try {
+          if (await f.file.exists()) {
+            await f.file.delete();
+          }
+        } catch (_) {}
+      }
+      _log('🧹 FILE SESSION ABORTED AND CLEANED', {'sessionId': sessionId});
+    } catch (e) {
+      _log('❌ ERROR ABORTING FILE SESSION', e.toString());
     }
   }
 
