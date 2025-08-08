@@ -315,20 +315,26 @@ class WebRTCService {
       }
       
       _peerId = from;
+      final offerSdp = offer['sdp'] as String?;
+      final offerType = offer['type'] as String? ?? 'offer';
+
+      // Pre-add transceivers if remote offer includes media sections
+      if (offerSdp != null) {
+        await _ensureRecvTransceiversForOffer(offerSdp);
+      }
       
       // Set remote description with error handling
       _log('📡 SETTING REMOTE DESCRIPTION');
-      await _peerConnection?.setRemoteDescription(RTCSessionDescription(offer['sdp'], offer['type']));
-      
-      // Verify the remote description was actually set
-      final remoteDesc = _peerConnection?.getRemoteDescription();
-      if (remoteDesc != null) {
-        _remoteDescriptionSet = true;
-        _log('✅ REMOTE DESCRIPTION SET SUCCESSFULLY - Flag: $_remoteDescriptionSet');
-      } else {
-        _log('❌ REMOTE DESCRIPTION FAILED TO SET PROPERLY');
+      await _peerConnection?.setRemoteDescription(RTCSessionDescription(offerSdp, offerType));
+
+      // Wait until remote description is actually visible to the engine
+      final rdReady = await _waitForRemoteDescription(timeoutMs: 1000);
+      _remoteDescriptionSet = rdReady;
+      if (!_remoteDescriptionSet) {
+        _log('❌ REMOTE DESCRIPTION NOT READY AFTER TIMEOUT');
         return;
       }
+      _log('✅ REMOTE DESCRIPTION SET AND READY');
       
       // Small delay to ensure the peer connection is fully ready
       await Future.delayed(Duration(milliseconds: 50));
@@ -391,7 +397,8 @@ class WebRTCService {
     
     _log('📥 HANDLING ANSWER');
     await _peerConnection?.setRemoteDescription(RTCSessionDescription(answer['sdp'], answer['type']));
-    _remoteDescriptionSet = true;
+    // Wait until remote description is actually set in engine
+    _remoteDescriptionSet = await _waitForRemoteDescription(timeoutMs: 1000);
     
     // Process any queued candidates
     await _processQueuedCandidates();
@@ -421,30 +428,16 @@ class WebRTCService {
     
     _log('🧊 HANDLING ICE CANDIDATE - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
     
-    // Always queue candidates if remote description isn't properly set
-    if (!_remoteDescriptionSet || _isResetting) {
+    // Always queue until remote description is confirmed ready; processing is batched
+    if (!_remoteDescriptionSet || _isResetting || _peerConnection?.getRemoteDescription() == null) {
       _log('📦 QUEUEING ICE CANDIDATE (remote description not ready)');
       _pendingCandidates.add(iceCandidate);
       return;
     }
     
-    _log('🧊 ADDING ICE CANDIDATE DIRECTLY');
-    try {
-      // Double-check peer connection state before adding
-      if (_peerConnection?.getRemoteDescription() == null) {
-        _log('📦 QUEUEING CANDIDATE - Remote description actually null despite flag');
-        _pendingCandidates.add(iceCandidate);
-        return;
-      }
-      
-      await _peerConnection?.addCandidate(iceCandidate);
-      _log('✅ ICE CANDIDATE ADDED SUCCESSFULLY');
-    } catch (e) {
-      _log('❌ ERROR ADDING ICE CANDIDATE', e.toString());
-      // Always queue on any error - better safe than sorry
-      _log('📦 QUEUEING CANDIDATE DUE TO ERROR');
-      _pendingCandidates.add(iceCandidate);
-    }
+    // If RD is ready, we'll still prefer processing through the queue to keep ordering
+    _pendingCandidates.add(iceCandidate);
+    await _processQueuedCandidates();
   }
 
   Future<void> _processQueuedCandidates() async {
@@ -479,6 +472,45 @@ class WebRTCService {
       _pendingCandidates.addAll(failedCandidates);
     } else {
       _log('📦 FINISHED PROCESSING ALL QUEUED CANDIDATES SUCCESSFULLY');
+    }
+  }
+
+  // Polls until getRemoteDescription is non-null or timeout
+  Future<bool> _waitForRemoteDescription({int timeoutMs = 1000, int intervalMs = 25}) async {
+    final deadline = DateTime.now().add(Duration(milliseconds: timeoutMs));
+    while (DateTime.now().isBefore(deadline)) {
+      try {
+        final rd = _peerConnection?.getRemoteDescription();
+        if (rd != null) {
+          return true;
+        }
+      } catch (_) {}
+      await Future.delayed(Duration(milliseconds: intervalMs));
+    }
+    return false;
+  }
+
+  // If the offer SDP includes audio/video m-lines, add recvonly transceivers
+  Future<void> _ensureRecvTransceiversForOffer(String sdp) async {
+    try {
+      final hasAudio = sdp.contains('\nm=audio');
+      final hasVideo = sdp.contains('\nm=video');
+      if (hasAudio) {
+        _log('🎚️ ADDING RECVONLY AUDIO TRANSCEIVER');
+        await _peerConnection?.addTransceiver(
+          kind: RTCRtpMediaType.RTCRtpMediaTypeAudio,
+          init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
+        );
+      }
+      if (hasVideo) {
+        _log('🎚️ ADDING RECVONLY VIDEO TRANSCEIVER');
+        await _peerConnection?.addTransceiver(
+          kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
+          init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
+        );
+      }
+    } catch (e) {
+      _log('⚠️ ERROR ADDING RECV TRANSCEIVERS (IGNORING)', e.toString());
     }
   }
 
