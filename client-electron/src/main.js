@@ -7,31 +7,45 @@ class App {
     this.mainWindow = null;
     this.tray = null;
     this.isQuitting = false;
+    this.enabled = true;
     
     this.init();
   }
 
   init() {
+    console.log('🚀 App initializing...');
+    
+    // Hide dock icon on macOS to make it a proper menubar app
+    if (process.platform === 'darwin') {
+      app.dock.hide();
+      console.log('🔒 Dock icon hidden on macOS');
+    }
+    
     // Handle app ready
     app.whenReady().then(() => {
-      this.createWindow();
+      console.log('✅ App ready, creating tray...');
       this.createTray();
       this.registerGlobalShortcuts();
       this.setupIPC();
+      console.log('🎯 Initialization complete - app running in background');
+      // Don't create window on startup - only when tray is clicked
+    }).catch(error => {
+      console.error('❌ App initialization failed:', error);
     });
 
-    // Handle window-all-closed
+    // Handle window-all-closed - keep app running in background
     app.on('window-all-closed', () => {
-      // On macOS, keep app running even when all windows are closed
-      if (process.platform !== 'darwin') {
-        app.quit();
-      }
+      // Keep app running in background on all platforms
+      // App should only quit when user explicitly quits from tray
     });
 
-    // Handle activate (macOS)
+    // Handle activate (macOS) - don't auto-create window
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        this.createWindow();
+      // On macOS, don't automatically create window on dock click
+      // User should click tray icon to show window
+      // Keep dock hidden
+      if (process.platform === 'darwin') {
+        app.dock.hide();
       }
     });
 
@@ -48,9 +62,15 @@ class App {
   }
 
   createWindow() {
+    if (this.mainWindow) {
+      // Window already exists, just show it
+      this.showWindow();
+      return;
+    }
+
     this.mainWindow = new BrowserWindow({
       width: 800,
-      height: 600,
+      height: 800,
       show: false, // Start hidden
       skipTaskbar: true,
       webPreferences: {
@@ -73,7 +93,12 @@ class App {
       }
     });
 
-    // Show and focus window when ready
+    // Handle window closed - set to null so it can be recreated
+    this.mainWindow.on('closed', () => {
+      this.mainWindow = null;
+    });
+
+    // Show and focus window when ready (only for menubar click)
     this.mainWindow.once('ready-to-show', () => {
       this.mainWindow.show();
       this.mainWindow.focus();
@@ -89,57 +114,101 @@ class App {
 
   createTray() {
     try {
+      console.log('🔧 Creating tray icon...');
+      
       // Create tray icon
       const iconPath = this.getTrayIconPath();
-      this.tray = new Tray(iconPath);
+      console.log('📁 Tray icon path:', iconPath);
+
+      if (!iconPath) {
+        throw new Error('No valid tray icon path found');
+      }
+
+      // On macOS, load as nativeImage and mark as template for proper theming
+      let trayImage = iconPath;
+      if (process.platform === 'darwin') {
+        const { nativeImage } = require('electron');
+        const img = nativeImage.createFromPath(iconPath);
+        if (!img.isEmpty()) {
+          img.setTemplateImage(true);
+          trayImage = img;
+        } else {
+          console.warn('⚠️ Loaded tray image is empty; using path directly');
+        }
+      }
+
+      this.tray = new Tray(trayImage);
+      console.log('✅ Tray created successfully');
 
       // Set tooltip
       this.tray.setToolTip('Shared Clipboard - Click to show window');
+      console.log('📝 Tray tooltip set');
 
-      // Create context menu
-      const contextMenu = Menu.buildFromTemplate([
-        {
-          label: 'Show Window',
-          click: () => this.showWindow()
-        },
-        {
-          label: 'Hide Window',
-          click: () => this.hideWindow()
-        },
-        { type: 'separator' },
-        {
-          label: 'Enable',
-          click: () => this.setEnabled(true)
-        },
-        {
-          label: 'Disable',
-          click: () => this.setEnabled(false)
-        },
-        { type: 'separator' },
-        {
-          label: 'Quit',
-          click: () => this.quit()
-        }
-      ]);
+      // Temporary: also set a short title on macOS to ensure visibility in menubar
+      // If you see the text but not the icon, the icon asset likely needs adjustment (size ~18-22px, alpha, template)
+      if (process.platform === 'darwin' && this.tray.setTitle) {
+        try { this.tray.setTitle('SC'); } catch (e) { console.warn('setTitle not supported:', e); }
+      }
 
-      this.tray.setContextMenu(contextMenu);
+      // Create and attach context menu
+      this.tray.setContextMenu(this.buildContextMenu());
+      console.log('📋 Tray context menu set');
 
-      // Handle tray click
+      // Handle tray left-click - show the context menu (do NOT open window)
       this.tray.on('click', () => {
-        this.showWindow();
+        console.log('🖱️ Tray icon clicked');
+        this.tray.popUpContextMenu();
       });
 
       // Handle tray right-click (Windows/Linux)
       this.tray.on('right-click', () => {
+        console.log('🖱️ Tray icon right-clicked');
         this.tray.popUpContextMenu();
       });
+      
+      console.log('🎉 Tray setup complete - icon should be visible in menubar');
     } catch (error) {
-      console.error('Failed to create tray:', error);
+      console.error('❌ Failed to create tray:', error);
+      console.error('Stack trace:', error.stack);
     }
+  }
+
+  buildContextMenu() {
+    // Single toggle (checkbox) for enabled/disabled state
+    return Menu.buildFromTemplate([
+      {
+        label: 'Show Window',
+        click: () => {
+          if (!this.mainWindow) {
+            this.createWindow();
+          } else {
+            this.showWindow();
+          }
+        }
+      },
+      {
+        label: 'Hide Window',
+        click: () => this.hideWindow()
+      },
+      { type: 'separator' },
+      {
+        label: 'Enabled',
+        type: 'checkbox',
+        checked: this.enabled,
+        click: (menuItem) => this.setEnabled(menuItem.checked)
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: () => this.quit()
+      }
+    ]);
   }
 
   getTrayIconPath() {
     const fs = require('fs');
+    console.log('🔍 Getting tray icon path for platform:', process.platform);
+    
     let iconName;
     if (process.platform === 'darwin') {
       iconName = 'trayTemplate.png';
@@ -148,16 +217,19 @@ class App {
     } else {
       iconName = 'icon.png';
     }
-
+    
+    console.log('📄 Icon name:', iconName);
     const iconPath = path.join(__dirname, '../assets', iconName);
+    console.log('📁 Full icon path:', iconPath);
 
     // Check if the icon file exists, fallback to a simple icon if not
     if (!fs.existsSync(iconPath)) {
-      console.warn(`Icon not found at ${iconPath}, using fallback`);
+      console.warn(`❌ Icon not found at ${iconPath}, using empty nativeImage as fallback`);
       const { nativeImage } = require('electron');
       return nativeImage.createEmpty();
     }
-
+    
+    console.log('✅ Icon file exists, using:', iconPath);
     return iconPath;
   }
 
@@ -219,6 +291,11 @@ class App {
     console.log(`Service enabled: ${enabled}`);
     // Send message to renderer to enable/disable services
     this.mainWindow?.webContents.send('set-enabled', enabled);
+    // Update internal state and refresh menu to reflect checkbox
+    this.enabled = enabled;
+    if (this.tray) {
+      this.tray.setContextMenu(this.buildContextMenu());
+    }
   }
 
   quit() {
