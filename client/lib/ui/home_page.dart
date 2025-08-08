@@ -50,7 +50,7 @@ class _HomePageState extends State<HomePage> {
         ),
         keyDownHandler: (hotKey) async {
           print('🔎 Hotkey SHARE triggered');
-          await _shareClipboardViaServices();
+          _shareClipboard();
         },
       );
 
@@ -63,7 +63,7 @@ class _HomePageState extends State<HomePage> {
         ),
         keyDownHandler: (hotKey) async {
           print('🔎 Hotkey REQUEST triggered');
-          _socketService.sendRequestShare();
+          _requestClipboard();
         },
       );
 
@@ -74,16 +74,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _shareClipboardViaServices() async {
-    try {
-      _socketService.sendShareReady();
-      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-      final text = clipboardData?.text ?? '';
-      await _webrtcService.createOffer(text);
-    } catch (e) {
-      print('❌ Error sharing clipboard via hotkey: $e');
-    }
-  }
 
   @override
   void initState() {
