@@ -22,9 +22,9 @@ class WebRTCService {
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteDescriptionSet = false;
 
-  // Chunking protocol settings and state
-  static const int _chunkSize = 16 * 1024; // 16 KB safe default for data channels
-  static const int _bufferedLowThreshold = 512 * 1024; // 512 KB backpressure threshold (more conservative)
+  // Chunking protocol settings and state - much smaller chunks for large file stability
+  static const int _chunkSize = 4 * 1024; // 4 KB chunks to reduce buffer pressure
+  static const int _bufferedLowThreshold = 128 * 1024; // 128 KB backpressure threshold (very conservative)
   final Map<String, StringBuffer> _rxBuffers = {};
   final Map<String, int> _rxReceivedBytes = {};
   final Map<String, int> _rxTotalBytes = {};
@@ -35,6 +35,8 @@ class WebRTCService {
   DateTime _rateWindowStart = DateTime.now();
   int _messagesSent = 0;
   int _lastReceivedAck = 0;
+  final Map<String, int> _sessionChunksSent = {};
+  final Map<String, Completer<void>> _waitingForAck = {};
 
   // Streaming files state (proto v2)
   final Map<String, _FileSession> _fileSessions = {};
@@ -115,6 +117,8 @@ class WebRTCService {
               if (sent % (1024 * 1024) < _chunkSize) {
                 _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size});
               }
+              // Small delay between chunks to prevent overwhelming the data channel
+              await Future.delayed(Duration(milliseconds: 5));
             }
           } finally {
             await raf.close();
@@ -144,6 +148,8 @@ class WebRTCService {
           if (sent % (1024 * 1024) < _chunkSize) {
             _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size});
           }
+          // Small delay between chunks to prevent overwhelming the data channel
+          await Future.delayed(Duration(milliseconds: 5));
         }
       }
       // Verify integrity before declaring completion
@@ -556,9 +562,9 @@ class WebRTCService {
 
     await waitForLowBuffer();
 
-      // Much more aggressive rate limiting to prevent SCTP buffer overflow
+      // Ultra-conservative rate limiting to prevent SCTP buffer overflow
     final now = DateTime.now();
-    if (now.difference(_rateWindowStart).inMilliseconds > 200) {
+    if (now.difference(_rateWindowStart).inMilliseconds > 500) {
       _rateWindowStart = now;
       _rateBytesWindow = 0;
     }
@@ -569,10 +575,10 @@ class WebRTCService {
     } catch (_) {
       msgBytes = text.length;
     }
-    // Much more conservative: ~5 MB/s => 1 MB per 200ms window
-    const int windowCap = 1024 * 1024;
+    // Ultra-conservative: ~1 MB/s => 512KB per 500ms window
+    const int windowCap = 512 * 1024;
     if (_rateBytesWindow + msgBytes > windowCap) {
-      final toWait = 200 - now.difference(_rateWindowStart).inMilliseconds;
+      final toWait = 500 - now.difference(_rateWindowStart).inMilliseconds;
       if (toWait > 0) {
         _log('⏸️ RATE LIMITING: waiting ${toWait}ms', {'windowBytes': _rateBytesWindow, 'msgBytes': msgBytes});
         await Future.delayed(Duration(milliseconds: toWait));
