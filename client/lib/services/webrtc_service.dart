@@ -73,7 +73,8 @@ class WebRTCService {
     final ready = Completer<void>();
     _sessionReadyCompleters[sessionId] = ready;
     try {
-      await ready.future.timeout(Duration(seconds: 10));
+      // Allow ample time for the receiver to choose save locations
+      await ready.future.timeout(Duration(minutes: 3));
       _log('✅ RECEIVER READY, STARTING STREAM', sessionId);
     } catch (e) {
       _log('⚠️ RECEIVER READY TIMEOUT, ABORTING STREAM', sessionId);
