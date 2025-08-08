@@ -109,7 +109,7 @@ class WebRTCService {
     }
     
     // Backpressure: fire completer when buffered amount goes low
-    _dataChannel?.onBufferedAmountLow = () {
+    _dataChannel?.onBufferedAmountLow = (int amount) {
       _log('📉 DATA CHANNEL BUFFERED AMOUNT LOW');
       _bufferLowCompleter?.complete();
       _bufferLowCompleter = null;
