@@ -671,23 +671,26 @@ class WebRTCService {
   void _forceCleanup({bool preserveClipboardContent = false}) {
     _dataChannel = null;
     _peerConnection = null;
-    // Only clear clipboard content if we're not preserving it (i.e., not the sharing device)
-    if (!preserveClipboardContent) {
-      _pendingClipboardContent = null;
-    }
+    // CRITICAL: Always clear clipboard content to prevent stale file caching
+    // Only preserve during the same connection, not across different transfers
+    _pendingClipboardContent = null;
     _peerId = null;
     _isInitialized = false;
     _pendingCandidates.clear();
     _remoteDescriptionSet = false;
+    
+    _log('🧹 FORCE CLEANUP COMPLETED', {
+      'preserveClipboardContent': preserveClipboardContent,
+      'clipboardCleared': true
+    });
   }
 
   Future<void> createOffer(String? peerId) async {
     try {
       _log('🎯 createOffer CALLED', peerId);
       
-      // Reset connection state for clean start - preserve clipboard content since we're the sharing device
-      await _resetConnection(preserveClipboardContent: true);
-      
+      // CRITICAL: Always read fresh clipboard content, don't preserve old content
+      await _resetConnection(preserveClipboardContent: false);
       if (_peerConnection == null) {
         _log('❌ ERROR: PeerConnection is null after reset, cannot create offer');
         return;
@@ -697,23 +700,20 @@ class WebRTCService {
       _peerId = peerId;
       _log('🎯 CREATING OFFER FOR PEER', peerId);
       
-      // Read current clipboard content (text or files)
+      // CRITICAL: Always read fresh clipboard content for each offer
       try {
-        _log('📋 READING CLIPBOARD FOR OFFER');
+        _log('📋 READING FRESH CLIPBOARD FOR OFFER');
         final clipboardContent = await _fileTransferService.getClipboardContent();
-        
-        if (clipboardContent.isFiles) {
-          _log('📁 FOUND FILES IN CLIPBOARD', '${clipboardContent.files.length} files');
-          _pendingClipboardContent = clipboardContent; // we'll stream them
-          _log('📦 FILES READY FOR STREAMING', {'count': clipboardContent.files.length});
-        } else if (clipboardContent.text.isNotEmpty) {
-          _log('📝 FOUND TEXT IN CLIPBOARD', clipboardContent.text);
-          _pendingClipboardContent = clipboardContent; // will serialize at send
-        } else {
-          _log('❌ NO CLIPBOARD CONTENT TO SHARE');
-        }
+        _pendingClipboardContent = clipboardContent;
+        _log('📋 FRESH CLIPBOARD CONTENT READ', {
+          'isFiles': clipboardContent.isFiles,
+          'fileCount': clipboardContent.isFiles ? clipboardContent.files.length : 0,
+          'textLength': clipboardContent.isFiles ? 0 : clipboardContent.text.length,
+          'fileNames': clipboardContent.isFiles ? clipboardContent.files.map((f) => f.name).toList() : []
+        });
       } catch (e) {
         _log('❌ ERROR READING CLIPBOARD', e.toString());
+        _pendingClipboardContent = ClipboardContent.text('Error reading clipboard');
       }
       
       // Create data channel

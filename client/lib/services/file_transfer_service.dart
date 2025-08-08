@@ -238,6 +238,11 @@ class FileTransferService {
     try {
       if (content.isFiles) {
         _log('📁 SETTING FILES TO CLIPBOARD', '${content.files.length} files');
+        
+        // CRITICAL: Trigger file download prompts for received files
+        await _promptAndSaveReceivedFiles(content.files);
+        
+        // Also set file names to text clipboard for convenience
         await _setFiles(content.files);
       } else {
         _log('📝 SETTING TEXT TO CLIPBOARD');
@@ -245,6 +250,44 @@ class FileTransferService {
       }
     } catch (e) {
       _log('❌ ERROR SETTING CLIPBOARD', e.toString());
+    }
+  }
+
+  // Prompt user to save received files
+  Future<void> _promptAndSaveReceivedFiles(List<FileData> files) async {
+    try {
+      _log('💾 PROMPTING USER TO SAVE RECEIVED FILES', '${files.length} files');
+      
+      for (int i = 0; i < files.length; i++) {
+        final file = files[i];
+        _log('💾 PROMPTING FOR FILE', '${file.name} (${file.size} bytes)');
+        
+        // Prompt user for save location
+        String? savePath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save received file',
+          fileName: file.name,
+        );
+        
+        if (savePath == null || savePath.isEmpty) {
+          _log('🚫 USER CANCELLED SAVE FOR FILE', file.name);
+          continue;
+        }
+        
+        // Save the file
+        final saveFile = File(savePath);
+        await saveFile.parent.create(recursive: true);
+        await saveFile.writeAsBytes(file.content);
+        
+        _log('✅ FILE SAVED SUCCESSFULLY', {
+          'name': file.name,
+          'path': savePath,
+          'size': file.size
+        });
+      }
+      
+      _log('🎉 ALL FILES PROCESSED FOR SAVING');
+    } catch (e) {
+      _log('❌ ERROR PROMPTING FOR FILE SAVE', e.toString());
     }
   }
 
