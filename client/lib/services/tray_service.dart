@@ -10,8 +10,8 @@ class TrayService {
       print('Initializing system tray...');
       
       // Initialize system tray with icon
-      // Use bundled PNG for all platforms (ensure asset is declared in pubspec.yaml)
-      String iconPath = 'assets/icon.png';
+      // Use .ico on Windows for crisp tray rendering, PNG elsewhere
+      String iconPath = Platform.isWindows ? 'assets/icon.ico' : 'assets/icon.png';
 
       await _systemTray.initSystemTray(
         title: "Shared Clipboard",
@@ -34,10 +34,16 @@ class TrayService {
 
       await _systemTray.setContextMenu(menu);
 
-      _systemTray.registerSystemTrayEventHandler((eventName) {
+      _systemTray.registerSystemTrayEventHandler((eventName) async {
         print('System tray event: $eventName');
         if (eventName == kSystemTrayEventClick) {
-          showApp(); // Show window on single click
+          // Toggle window on single click
+          final isVisible = await windowManager.isVisible();
+          if (isVisible) {
+            await hideApp();
+          } else {
+            await showApp();
+          }
         } else if (eventName == kSystemTrayEventRightClick) {
           _systemTray.popUpContextMenu();
         }
@@ -57,7 +63,8 @@ class TrayService {
       // Make sure window is created and ready
       await windowManager.show();
       await windowManager.focus();
-      await windowManager.setSkipTaskbar(false);
+      // Keep the app off the taskbar; it is controlled via the system tray
+      await windowManager.setSkipTaskbar(true);
       
       print("Window shown successfully");
     } catch (e) {
