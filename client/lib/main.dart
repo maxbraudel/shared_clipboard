@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:shared_clipboard/ui/home_page.dart';
 import 'package:shared_clipboard/services/tray_service.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:hotkey_manager/hotkey_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // hotkey_manager does not require explicit ensureInitialized on desktop
   
   // Initialize window manager
   await windowManager.ensureInitialized();

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:io' show Platform;
+import 'package:hotkey_manager/hotkey_manager.dart';
 import 'dart:async';
 import 'package:shared_clipboard/services/socket_service.dart';
 import 'package:shared_clipboard/services/webrtc_service.dart';
@@ -28,6 +30,59 @@ class _HomePageState extends State<HomePage> {
       return text;
     }
     return '${text.substring(0, maxLength)}...';
+  }
+
+  Future<void> _registerGlobalHotkeys() async {
+    try {
+      // Clear any prior registrations to avoid duplicates
+      await hotKeyManager.unregisterAll();
+
+      final isMac = Platform.isMacOS;
+      final shareModifiers = isMac ? [HotKeyModifier.meta] : [HotKeyModifier.control];
+      final requestModifiers = isMac ? [HotKeyModifier.meta] : [HotKeyModifier.control];
+
+      // Share clipboard: Cmd+F12 (macOS) or Ctrl+F12 (Windows)
+      await hotKeyManager.register(
+        HotKey(
+          key: LogicalKeyboardKey.f12,
+          modifiers: shareModifiers,
+          scope: HotKeyScope.system, // ensure system-wide
+        ),
+        keyDownHandler: (hotKey) async {
+          print('🔎 Hotkey SHARE triggered');
+          await _shareClipboardViaServices();
+        },
+      );
+
+      // Request clipboard: Cmd+F11 (macOS) or Ctrl+F11 (Windows)
+      await hotKeyManager.register(
+        HotKey(
+          key: LogicalKeyboardKey.f11,
+          modifiers: requestModifiers,
+          scope: HotKeyScope.system,
+        ),
+        keyDownHandler: (hotKey) async {
+          print('🔎 Hotkey REQUEST triggered');
+          _socketService.sendRequestShare();
+        },
+      );
+
+      print('✅ Global hotkeys registered');
+    } catch (e, st) {
+      print('❌ Failed to register global hotkeys: $e');
+      print(st);
+    }
+  }
+
+  Future<void> _shareClipboardViaServices() async {
+    try {
+      _socketService.sendShareReady();
+      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = clipboardData?.text ?? '';
+      await _webrtcService.createOffer(text);
+    } catch (e) {
+      print('❌ Error sharing clipboard via hotkey: $e');
+    }
   }
 
   @override
@@ -135,6 +190,9 @@ class _HomePageState extends State<HomePage> {
       });
       
       print('✅ SERVICES INITIALIZED SUCCESSFULLY');
+
+      // Register global hotkeys after services are ready
+      await _registerGlobalHotkeys();
     } catch (e) {
       print('❌ SERVICE INITIALIZATION ERROR: $e');
       setState(() {
