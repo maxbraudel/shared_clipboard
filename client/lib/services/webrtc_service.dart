@@ -33,6 +33,8 @@ class WebRTCService {
   int _pacingBytes = 0;
   int _rateBytesWindow = 0;
   DateTime _rateWindowStart = DateTime.now();
+  int _messagesSent = 0;
+  int _lastReceivedAck = 0;
 
   // Streaming files state (proto v2)
   final Map<String, _FileSession> _fileSessions = {};
@@ -554,9 +556,9 @@ class WebRTCService {
 
     await waitForLowBuffer();
 
-    // Simple rate limiter for platforms without proper backpressure signals
+      // Much more aggressive rate limiting to prevent SCTP buffer overflow
     final now = DateTime.now();
-    if (now.difference(_rateWindowStart).inMilliseconds > 100) {
+    if (now.difference(_rateWindowStart).inMilliseconds > 200) {
       _rateWindowStart = now;
       _rateBytesWindow = 0;
     }
@@ -567,11 +569,12 @@ class WebRTCService {
     } catch (_) {
       msgBytes = text.length;
     }
-    // Target ~20 MB/s => 2 MB per 100ms window
-    const int windowCap = 2 * 1024 * 1024;
+    // Much more conservative: ~5 MB/s => 1 MB per 200ms window
+    const int windowCap = 1024 * 1024;
     if (_rateBytesWindow + msgBytes > windowCap) {
-      final toWait = 100 - now.difference(_rateWindowStart).inMilliseconds;
+      final toWait = 200 - now.difference(_rateWindowStart).inMilliseconds;
       if (toWait > 0) {
+        _log('⏸️ RATE LIMITING: waiting ${toWait}ms', {'windowBytes': _rateBytesWindow, 'msgBytes': msgBytes});
         await Future.delayed(Duration(milliseconds: toWait));
       }
       _rateWindowStart = DateTime.now();
@@ -579,6 +582,18 @@ class WebRTCService {
     }
 
     ch.send(RTCDataChannelMessage(text));
+    
+    // Log buffer state after send to detect overflow
+    try {
+      final buffered = ch.bufferedAmount;
+      if (buffered != null && buffered > 0) {
+        _log('📊 BUFFER STATE AFTER SEND', {'buffered': buffered, 'threshold': _bufferedLowThreshold});
+        if (buffered > _bufferedLowThreshold * 2) {
+          _log('⚠️ BUFFER DANGEROUSLY HIGH', {'buffered': buffered, 'threshold': _bufferedLowThreshold});
+        }
+      }
+    } catch (_) {}
+    
     // Update pacing accumulator based on actual payload size
     try {
       final sz = utf8.encode(text).length;
