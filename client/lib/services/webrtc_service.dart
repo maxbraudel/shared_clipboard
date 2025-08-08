@@ -615,8 +615,6 @@ class WebRTCService {
       _log('📡 CREATING DATA CHANNEL');
       final dataChannelInit = RTCDataChannelInit()
         ..ordered = true  // Ensure ordered delivery for file integrity
-        ..maxRetransmits = null  // Use maxPacketLifeTime instead
-        ..maxPacketLifeTime = null  // Reliable delivery (no packet lifetime limit)
         ..protocol = 'file-transfer'  // Custom protocol identifier
         ..negotiated = false;  // Let WebRTC handle negotiation
       
