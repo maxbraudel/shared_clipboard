@@ -31,6 +31,7 @@ class WebRTCService {
 
   // Streaming files state (proto v2)
   final Map<String, _FileSession> _fileSessions = {};
+  final Map<String, Completer<void>> _sessionReadyCompleters = {};
   
   // Callback to send signals back to socket service
   Function(String to, dynamic signal)? onSignalGenerated;
@@ -67,6 +68,18 @@ class WebRTCService {
       'files': filesMeta,
     });
     _dataChannel!.send(RTCDataChannelMessage(startEnv));
+
+    // Wait for receiver to prepare and acknowledge readiness
+    final ready = Completer<void>();
+    _sessionReadyCompleters[sessionId] = ready;
+    try {
+      await ready.future.timeout(Duration(seconds: 10));
+      _log('✅ RECEIVER READY, STARTING STREAM', sessionId);
+    } catch (e) {
+      _log('⚠️ RECEIVER READY TIMEOUT, ABORTING STREAM', sessionId);
+      _sessionReadyCompleters.remove(sessionId);
+      return;
+    }
 
     // Stream each file
     for (int i = 0; i < content.files.length; i++) {
@@ -217,7 +230,25 @@ class WebRTCService {
               // Ask user for directory immediately
               final filesMeta = (env['files'] as List).cast<Map<String, dynamic>>();
               _log('🔰 START FILE STREAM SESSION', {'sessionId': sessionId, 'files': filesMeta.length});
-              _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
+              () async {
+                await _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
+                // Notify sender we are ready to receive chunks
+                final readyEnv = jsonEncode({
+                  '__sc_proto': 2,
+                  'kind': 'files',
+                  'mode': 'ready',
+                  'sessionId': sessionId,
+                });
+                _dataChannel?.send(RTCDataChannelMessage(readyEnv));
+                _log('📨 SENT RECEIVER READY', sessionId);
+              }();
+              return;
+            }
+            if (mode == 'ready' && sessionId != null) {
+              // Sender side receives readiness ack
+              final c = _sessionReadyCompleters.remove(sessionId);
+              c?.complete();
+              _log('📩 RECEIVED READY ACK', sessionId);
               return;
             }
             if (mode == 'file_chunk' && sessionId != null) {
