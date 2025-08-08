@@ -785,31 +785,66 @@ class WebRTCService {
   // ===== Streaming file receiver helpers (proto v2) =====
   Future<void> _promptDirectoryAndPrepareFiles(String sessionId, List<Map<String, dynamic>> filesMeta) async {
     try {
-      String? dirPath = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Choose folder to save incoming files');
-      if (dirPath == null || dirPath.isEmpty) {
-        // User cancelled; fall back to a temp directory to avoid breaking the stream
-        final temp = await Directory.systemTemp.createTemp('shared_clipboard_');
-        dirPath = temp.path;
-        _log('ℹ️ USER CANCELLED DIRECTORY PICKER - USING TEMP DIR', dirPath);
+      if (filesMeta.isEmpty) {
+        _log('⚠️ NO FILES META PROVIDED FOR SESSION', sessionId);
+        return;
       }
 
-      final session = _FileSession(dirPath);
-      for (final meta in filesMeta) {
-        final name = (meta['name'] as String?) ?? 'file';
-        final size = (meta['size'] as num?)?.toInt() ?? 0;
-        final checksum = (meta['checksum'] as String?) ?? '';
-        final file = File('${session.dirPath}${Platform.pathSeparator}$name');
-        // Ensure parent exists
+      // Prompt for the first file with its suggested name
+      final firstMeta = filesMeta.first;
+      final firstName = (firstMeta['name'] as String?) ?? 'file';
+      String? firstPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save incoming file',
+        fileName: firstName,
+      );
+      if (firstPath == null || firstPath.isEmpty) {
+        // User cancelled; fall back to a temp file to avoid breaking the stream
+        final tempDir = await Directory.systemTemp.createTemp('shared_clipboard_');
+        firstPath = tempDir.path + Platform.pathSeparator + firstName;
+        _log('ℹ️ USER CANCELLED SAVE DIALOG - USING TEMP FILE', firstPath);
+      }
+
+      // Derive session directory from first file path
+      final sessionDir = File(firstPath).parent.path;
+      final session = _FileSession(sessionDir);
+
+      // Prepare first file
+      await File(firstPath).parent.create(recursive: true);
+      final firstFile = File(firstPath);
+      final firstSink = firstFile.openWrite();
+      session.files.add(_IncomingFile(
+        name: firstName,
+        size: (firstMeta['size'] as num?)?.toInt() ?? 0,
+        checksum: (firstMeta['checksum'] as String?) ?? '',
+        file: firstFile,
+        sink: firstSink,
+      ));
+
+      // Prompt and prepare remaining files
+      for (int i = 1; i < filesMeta.length; i++) {
+        final meta = filesMeta[i];
+        final name = (meta['name'] as String?) ?? 'file_$i';
+        String? savePath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save incoming file',
+          fileName: name,
+        );
+        if (savePath == null || savePath.isEmpty) {
+          // If user cancels, fall back to session dir
+          savePath = session.dirPath + Platform.pathSeparator + name;
+          _log('ℹ️ USER CANCELLED SAVE DIALOG - DEFAULTING TO SESSION DIR', savePath);
+        }
+        final file = File(savePath);
         await file.parent.create(recursive: true);
         final sink = file.openWrite();
         session.files.add(_IncomingFile(
           name: name,
-          size: size,
-          checksum: checksum,
+          size: (meta['size'] as num?)?.toInt() ?? 0,
+          checksum: (meta['checksum'] as String?) ?? '',
           file: file,
           sink: sink,
         ));
       }
+
       _fileSessions[sessionId] = session;
       _log('📂 FILE SESSION PREPARED', {'sessionId': sessionId, 'dir': session.dirPath, 'files': session.files.length});
     } catch (e) {
