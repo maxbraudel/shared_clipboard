@@ -11,8 +11,7 @@ import 'package:shared_clipboard/services/native_file_clipboard.dart';
 // Removed native macOS pasteboard integration
 
 class FileTransferService {
-  // Max file size hint (not enforced). Very high to effectively allow large transfers.
-  static const int MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10 GB
+  static const int MAX_FILE_SIZE = 1000000 * 1024 * 1024; // 50MB limit for safety
   
   // Helper function for timestamped logging
   void _log(String message, [dynamic data]) {
@@ -197,8 +196,8 @@ class FileTransferService {
         
         final stat = await file.stat();
         if (stat.size > MAX_FILE_SIZE) {
-          _log('⚠️ FILE EXCEEDS RECOMMENDED SIZE HINT', '$filePath (${stat.size} bytes)');
-          // no skipping — streaming protocol handles large files
+          _log('⚠️ FILE TOO LARGE, SKIPPING', '$filePath (${stat.size} bytes)');
+          continue;
         }
         
         _log('📄 PROCESSING FILE', '$filePath (${stat.size} bytes)');
@@ -353,8 +352,8 @@ class FileTransferService {
         
         final stat = await file.stat();
         if (stat.size > MAX_FILE_SIZE) {
-          _log('⚠️ FILE EXCEEDS RECOMMENDED SIZE HINT', '${platformFile.name} (${stat.size} bytes)');
-          // no skipping — streaming protocol handles large files
+          _log('⚠️ FILE TOO LARGE, SKIPPING', '${platformFile.name} (${stat.size} bytes)');
+          continue;
         }
         
         _log('📄 PROCESSING SELECTED FILE', '${platformFile.name} (${stat.size} bytes)');
