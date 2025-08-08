@@ -35,7 +35,6 @@ class WebRTCService {
   DateTime _rateWindowStart = DateTime.now();
   int _messagesSent = 0;
   int _lastReceivedAck = 0;
-  final Map<String, Completer<void>> _chunkAckCompleters = {};
 
   // Streaming files state (proto v2)
   final Map<String, _FileSession> _fileSessions = {};
@@ -90,12 +89,11 @@ class WebRTCService {
       return;
     }
 
-    // Stream each file from disk with binary protocol and acknowledgments
+    // Stream each file from disk with extreme rate limiting to prevent SCTP overflow
     for (int i = 0; i < content.files.length; i++) {
       final f = content.files[i];
       _log('🚚 START STREAMING FILE', {'index': i, 'name': f.name, 'size': f.size});
       int sent = 0;
-      int chunkSeq = 0;
       
       if (f.path.isNotEmpty) {
         final file = File(f.path);
@@ -106,13 +104,22 @@ class WebRTCService {
               final read = await raf.read(_chunkSize);
               if (read.isEmpty) break;
               
-              // Send binary chunk with sequence number and wait for ack
-              await _sendBinaryChunkWithAck(sessionId, i, chunkSeq, read);
+              final env = jsonEncode({
+                '__sc_proto': 2,
+                'kind': 'files',
+                'mode': 'file_chunk',
+                'sessionId': sessionId,
+                'fileIndex': i,
+                'data': base64Encode(read),
+              });
+              await _sendWithBackpressure(env);
+              
+              // Extreme rate limiting: 50ms delay between every chunk
+              await Future.delayed(Duration(milliseconds: 50));
               
               sent += read.length;
-              chunkSeq++;
               if (sent % (1024 * 1024) < _chunkSize) {
-                _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size, 'seq': chunkSeq});
+                _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size});
               }
             }
           } finally {
@@ -130,14 +137,23 @@ class WebRTCService {
           final end = (offset + _chunkSize > bytes.length) ? bytes.length : offset + _chunkSize;
           final chunkBytes = bytes.sublist(offset, end);
           
-          // Send binary chunk with sequence number and wait for ack
-          await _sendBinaryChunkWithAck(sessionId, i, chunkSeq, chunkBytes);
+          final env = jsonEncode({
+            '__sc_proto': 2,
+            'kind': 'files',
+            'mode': 'file_chunk',
+            'sessionId': sessionId,
+            'fileIndex': i,
+            'data': base64Encode(chunkBytes),
+          });
+          await _sendWithBackpressure(env);
+          
+          // Extreme rate limiting: 50ms delay between every chunk
+          await Future.delayed(Duration(milliseconds: 50));
           
           offset = end;
           sent = offset;
-          chunkSeq++;
           if (sent % (1024 * 1024) < _chunkSize) {
-            _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size, 'seq': chunkSeq});
+            _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size});
           }
         }
       }
