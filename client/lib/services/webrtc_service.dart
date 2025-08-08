@@ -664,13 +664,37 @@ class WebRTCService {
       return;
     }
     
-    _log('📥 HANDLING ANSWER');
-    await _peerConnection?.setRemoteDescription(RTCSessionDescription(answer['sdp'], answer['type']));
-    // Wait until remote description is actually set in engine
-    _remoteDescriptionSet = await _waitForRemoteDescription(timeoutMs: 1000);
-    
-    // Process any queued candidates
-    await _processQueuedCandidates();
+    // Check signaling state to avoid calling setRemoteDescription in wrong state
+    final state = _peerConnection!.signalingState;
+    _log('📥 HANDLING ANSWER - signalingState: $state, remoteSet: $_remoteDescriptionSet');
+
+    // If we're already stable and have a remote description, this is likely a duplicate answer; ignore
+    if (state == RTCSignalingState.RTCSignalingStateStable &&
+        _peerConnection!.getRemoteDescription() != null) {
+      _log('ℹ️ IGNORING DUPLICATE ANSWER: already stable with remote description set');
+      return;
+    }
+
+    // Only set remote answer when we are in have-local-offer (we are the offerer)
+    if (state != RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+      _log('⚠️ UNEXPECTED STATE FOR REMOTE ANSWER: $state. Skipping setRemoteDescription to avoid error.');
+      return;
+    }
+
+    try {
+      await _peerConnection!.setRemoteDescription(
+        RTCSessionDescription(answer['sdp'], answer['type']),
+      );
+      // Wait until remote description is actually set in engine
+      _remoteDescriptionSet = await _waitForRemoteDescription(timeoutMs: 1000);
+      
+      // Process any queued candidates
+      await _processQueuedCandidates();
+    } catch (e, st) {
+      _log('❌ FAILED TO SET REMOTE ANSWER (guarded)', e.toString());
+      _log('❌ STACK TRACE', st.toString());
+      // Do not rethrow; just log to prevent crashing the app
+    }
   }
 
   Future<void> handleCandidate(dynamic candidate) async {
