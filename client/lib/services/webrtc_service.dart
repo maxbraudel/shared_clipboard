@@ -29,6 +29,10 @@ class WebRTCService {
   final Map<String, int> _rxReceivedBytes = {};
   final Map<String, int> _rxTotalBytes = {};
   Completer<void>? _bufferLowCompleter;
+  // Fallback pacing accumulator when bufferedAmount isn't reliable
+  int _pacingBytes = 0;
+  int _rateBytesWindow = 0;
+  DateTime _rateWindowStart = DateTime.now();
 
   // Streaming files state (proto v2)
   final Map<String, _FileSession> _fileSessions = {};
@@ -83,26 +87,83 @@ class WebRTCService {
       return;
     }
 
-    // Stream each file
+    // Stream each file from disk when possible to avoid preloaded byte truncation
     for (int i = 0; i < content.files.length; i++) {
       final f = content.files[i];
-      final bytes = f.content; // already read in FileTransferService
-      int offset = 0;
-      while (offset < bytes.length) {
-        final end = (offset + _chunkSize > bytes.length) ? bytes.length : offset + _chunkSize;
-        final chunkBytes = bytes.sublist(offset, end);
-        final env = jsonEncode({
+      _log('🚚 START STREAMING FILE', {'index': i, 'name': f.name, 'size': f.size});
+      int sent = 0;
+      if (f.path.isNotEmpty) {
+        final file = File(f.path);
+        if (await file.exists()) {
+          final raf = await file.open(mode: FileMode.read);
+          try {
+            while (true) {
+              final read = await raf.read(_chunkSize);
+              if (read.isEmpty) break;
+              sent += read.length;
+              final env = jsonEncode({
+                '__sc_proto': 2,
+                'kind': 'files',
+                'mode': 'file_chunk',
+                'sessionId': sessionId,
+                'fileIndex': i,
+                'data': base64Encode(read),
+              });
+              await _sendWithBackpressure(env);
+              if (sent % (1024 * 1024) < _chunkSize) {
+                _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size});
+              }
+            }
+          } finally {
+            await raf.close();
+          }
+        } else {
+          _log('⚠️ FILE PATH NOT FOUND, FALLING BACK TO MEMORY', f.path);
+        }
+      }
+      // Fallback to preloaded bytes if no valid path
+      if (sent == 0 && f.content.isNotEmpty) {
+        final bytes = f.content;
+        int offset = 0;
+        while (offset < bytes.length) {
+          final end = (offset + _chunkSize > bytes.length) ? bytes.length : offset + _chunkSize;
+          final chunkBytes = bytes.sublist(offset, end);
+          final env = jsonEncode({
+            '__sc_proto': 2,
+            'kind': 'files',
+            'mode': 'file_chunk',
+            'sessionId': sessionId,
+            'fileIndex': i,
+            'data': base64Encode(chunkBytes),
+          });
+          await _sendWithBackpressure(env);
+          offset = end;
+          sent = offset;
+          if (sent % (1024 * 1024) < _chunkSize) {
+            _log('📤 SENDER PROGRESS', {'file': f.name, 'sent': sent, 'of': f.size});
+          }
+        }
+      }
+      // Verify integrity before declaring completion
+      if (f.size > 0 && sent < f.size) {
+        _log('🛑 SENDER DETECTED PREMATURE EOF', {
+          'file': f.name,
+          'sent': sent,
+          'expected': f.size,
+          'path': f.path
+        });
+        // Inform receiver and abort whole session to avoid corrupted files
+        final cancelEnv = jsonEncode({
           '__sc_proto': 2,
           'kind': 'files',
-          'mode': 'file_chunk',
+          'mode': 'cancel',
           'sessionId': sessionId,
-          'fileIndex': i,
-          'data': base64Encode(chunkBytes),
         });
-        await _sendWithBackpressure(env);
-        offset = end;
-
+        await _sendWithBackpressure(cancelEnv);
+        _log('🚫 SESSION CANCELLED DUE TO PREMATURE EOF', sessionId);
+        return;
       }
+      _log('🏁 SENDER FILE COMPLETE', {'file': f.name, 'sent': sent, 'expected': f.size});
       // End of this file
       final fileEnd = jsonEncode({
         '__sc_proto': 2,
@@ -467,15 +528,66 @@ class WebRTCService {
           } finally {
             _bufferLowCompleter = null;
           }
+        } else if (current == null) {
+          // No metric: use conservative pacing every ~2MB
+          if (_pacingBytes > (2 * 1024 * 1024)) {
+            await Future.delayed(Duration(milliseconds: 25));
+            _pacingBytes = 0;
+          }
+        } else {
+          // Metric available and below threshold; also yield occasionally
+          if (_pacingBytes > (4 * 1024 * 1024)) {
+            await Future.delayed(Duration(milliseconds: 10));
+            _pacingBytes = 0;
+          }
         }
       } catch (_) {
         // If metric unavailable, small pacing delay
-        await Future.delayed(Duration(milliseconds: 2));
+        if (_pacingBytes > (2 * 1024 * 1024)) {
+          await Future.delayed(Duration(milliseconds: 20));
+          _pacingBytes = 0;
+        } else {
+          await Future.delayed(Duration(milliseconds: 2));
+        }
       }
     }
 
     await waitForLowBuffer();
+
+    // Simple rate limiter for platforms without proper backpressure signals
+    final now = DateTime.now();
+    if (now.difference(_rateWindowStart).inMilliseconds > 100) {
+      _rateWindowStart = now;
+      _rateBytesWindow = 0;
+    }
+    // approximate size of this message
+    int msgBytes;
+    try {
+      msgBytes = utf8.encode(text).length;
+    } catch (_) {
+      msgBytes = text.length;
+    }
+    // Target ~20 MB/s => 2 MB per 100ms window
+    const int windowCap = 2 * 1024 * 1024;
+    if (_rateBytesWindow + msgBytes > windowCap) {
+      final toWait = 100 - now.difference(_rateWindowStart).inMilliseconds;
+      if (toWait > 0) {
+        await Future.delayed(Duration(milliseconds: toWait));
+      }
+      _rateWindowStart = DateTime.now();
+      _rateBytesWindow = 0;
+    }
+
     ch.send(RTCDataChannelMessage(text));
+    // Update pacing accumulator based on actual payload size
+    try {
+      final sz = utf8.encode(text).length;
+      _pacingBytes += sz;
+      _rateBytesWindow += sz;
+    } catch (_) {
+      _pacingBytes += text.length; // fallback estimate
+      _rateBytesWindow += text.length;
+    }
   }
 
   Future<void> _initWithTimeout() async {
