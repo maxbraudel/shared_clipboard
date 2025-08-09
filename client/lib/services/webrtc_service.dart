@@ -126,10 +126,12 @@ class WebRTCService {
     if (_dataChannel == null) return;
     
     _dataChannel!.onDataChannelState = (state) {
+      _log('📡 DATA CHANNEL STATE CHANGED', state.toString());
       if (state == RTCDataChannelState.RTCDataChannelOpen) {
         _log('✅ DATA CHANNEL OPENED');
         // Only send content if we're the sender (have pending content)
         if (_pendingClipboardContent != null) {
+          _log('📤 SENDING CLIPBOARD CONTENT FROM STATE CALLBACK');
           _sendClipboardContent();
         } else {
           _log('📡 RECEIVER DATA CHANNEL READY - WAITING FOR CONTENT');
@@ -140,6 +142,12 @@ class WebRTCService {
     _dataChannel!.onMessage = (message) {
       _handleLegacyDataChannelMessage(message);
     };
+    
+    // Immediate check in case the data channel is already open
+    if (_dataChannel!.state == RTCDataChannelState.RTCDataChannelOpen && _pendingClipboardContent != null) {
+      _log('📤 DATA CHANNEL ALREADY OPEN - SENDING CONTENT IMMEDIATELY');
+      _sendClipboardContent();
+    }
   }
   
   /// Handle legacy data channel messages
@@ -393,7 +401,16 @@ class WebRTCService {
     
     // Create data channel
     _dataChannel = await _peerConnection!.createDataChannel('clipboard', RTCDataChannelInit());
+    _log('📡 DATA CHANNEL CREATED', _dataChannel!.state.toString());
     _setupLegacyDataChannel();
+    
+    // Add a small delay and check again to handle race conditions
+    Future.delayed(Duration(milliseconds: 100), () {
+      if (_dataChannel?.state == RTCDataChannelState.RTCDataChannelOpen && _pendingClipboardContent != null) {
+        _log('📤 DELAYED CHECK - SENDING CONTENT');
+        _sendClipboardContent();
+      }
+    });
     
     // Create offer
     final offer = await _peerConnection!.createOffer();
