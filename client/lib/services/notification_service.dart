@@ -1,13 +1,23 @@
 import 'dart:io';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:windows_taskbar/windows_taskbar.dart';
+
+class _DownloadInfo {
+  final String fileName;
+  final int totalBytes;
+  int receivedBytes;
+  DateTime startTime;
+  
+  _DownloadInfo({
+    required this.fileName,
+    required this.totalBytes,
+    this.receivedBytes = 0,
+  }) : startTime = DateTime.now();
+}
 
 class NotificationService {
-  static final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
-  
   static bool _isInitialized = false;
-  static final Map<String, int> _activeDownloads = {};
-  static int _notificationIdCounter = 1000;
+  static final Map<String, _DownloadInfo> _activeDownloads = {};
+  static String? _currentDownloadSession;
 
   // Helper function for timestamped logging
   static void _log(String message, [dynamic data]) {
@@ -26,36 +36,11 @@ class NotificationService {
     }
 
     try {
-      const WindowsInitializationSettings initializationSettingsWindows =
-          WindowsInitializationSettings(
-        appName: 'Shared Clipboard',
-        appUserModelId: 'com.sharedclipboard.app',
-      );
-
-      const InitializationSettings initializationSettings =
-          InitializationSettings(
-        windows: initializationSettingsWindows,
-      );
-
-      await _flutterLocalNotificationsPlugin.initialize(
-        initializationSettings,
-        onDidReceiveNotificationResponse: _onNotificationResponse,
-      );
-
       _isInitialized = true;
-      _log('✅ NOTIFICATION SERVICE INITIALIZED');
+      _log('✅ NOTIFICATION SERVICE INITIALIZED (Windows Taskbar Mode)');
     } catch (e) {
       _log('❌ FAILED TO INITIALIZE NOTIFICATION SERVICE', e.toString());
     }
-  }
-
-  /// Handle notification responses (clicks, etc.)
-  static void _onNotificationResponse(NotificationResponse response) {
-    _log('📱 NOTIFICATION RESPONSE', {
-      'id': response.id,
-      'actionId': response.actionId,
-      'payload': response.payload,
-    });
   }
 
   /// Start a download notification with progress bar
@@ -69,32 +54,27 @@ class NotificationService {
     }
 
     try {
-      final notificationId = _notificationIdCounter++;
-      _activeDownloads[sessionId] = notificationId;
+      final downloadInfo = _DownloadInfo(
+        fileName: fileName,
+        totalBytes: totalBytes,
+      );
+      _activeDownloads[sessionId] = downloadInfo;
+      _currentDownloadSession = sessionId;
 
       final sizeText = totalBytes > 0 
           ? ' (${_formatBytes(totalBytes)})'
           : '';
 
-      await _flutterLocalNotificationsPlugin.show(
-        notificationId,
-        'Downloading File',
-        '$fileName$sizeText - Starting...',
-        NotificationDetails(
-          windows: WindowsNotificationDetails(
-            progress: 0,
-            progressBarLabel: 'Preparing download...',
-          ),
-        ),
-        payload: 'download_$sessionId',
-      );
-
-      _log('📥 DOWNLOAD NOTIFICATION STARTED', {
+      // Set taskbar progress to indeterminate initially
+      await WindowsTaskbar.setProgressMode(TaskbarProgressMode.indeterminate);
+      
+      _log('📥 DOWNLOAD STARTED', {
         'fileName': fileName,
         'sessionId': sessionId,
-        'notificationId': notificationId,
         'totalBytes': totalBytes,
       });
+      
+      print('\n🔽 Starting download: $fileName$sizeText');
     } catch (e) {
       _log('❌ FAILED TO START DOWNLOAD NOTIFICATION', e.toString());
     }
@@ -111,31 +91,26 @@ class NotificationService {
       return;
     }
 
-    final notificationId = _activeDownloads[sessionId];
-    if (notificationId == null) {
+    final downloadInfo = _activeDownloads[sessionId];
+    if (downloadInfo == null) {
       return;
     }
 
     try {
+      downloadInfo.receivedBytes = receivedBytes;
+      
       final progress = totalBytes > 0 ? (receivedBytes / totalBytes * 100).round() : 0;
       final progressText = totalBytes > 0 
           ? '${_formatBytes(receivedBytes)} / ${_formatBytes(totalBytes)}'
           : '${_formatBytes(receivedBytes)} received';
 
-      await _flutterLocalNotificationsPlugin.show(
-        notificationId,
-        'Downloading File',
-        '$fileName - $progress% complete',
-        NotificationDetails(
-          windows: WindowsNotificationDetails(
-            progress: progress,
-            progressBarLabel: progressText,
-          ),
-        ),
-        payload: 'download_$sessionId',
-      );
+      // Update taskbar progress if this is the current download
+      if (_currentDownloadSession == sessionId && totalBytes > 0) {
+        await WindowsTaskbar.setProgressMode(TaskbarProgressMode.normal);
+        await WindowsTaskbar.setProgress(receivedBytes, totalBytes);
+      }
 
-      // Only log every 10% to avoid spam
+      // Only log and print every 10% to avoid spam
       if (progress % 10 == 0 || progress >= 100) {
         _log('📊 DOWNLOAD PROGRESS UPDATED', {
           'fileName': fileName,
@@ -144,6 +119,8 @@ class NotificationService {
           'receivedBytes': receivedBytes,
           'totalBytes': totalBytes,
         });
+        
+        print('📊 $fileName: $progress% ($progressText)');
       }
     } catch (e) {
       _log('❌ FAILED TO UPDATE DOWNLOAD PROGRESS', e.toString());
@@ -160,37 +137,30 @@ class NotificationService {
       return;
     }
 
-    final notificationId = _activeDownloads.remove(sessionId);
-    if (notificationId == null) {
+    final downloadInfo = _activeDownloads.remove(sessionId);
+    if (downloadInfo == null) {
       return;
     }
 
     try {
       final sizeText = totalBytes > 0 ? ' (${_formatBytes(totalBytes)})' : '';
+      final duration = DateTime.now().difference(downloadInfo.startTime);
+      final durationText = _formatDuration(duration);
 
-      await _flutterLocalNotificationsPlugin.show(
-        notificationId,
-        'Download Complete',
-        '$fileName$sizeText - Successfully downloaded',
-        const NotificationDetails(
-          windows: WindowsNotificationDetails(
-            progress: 100,
-            progressBarLabel: 'Download complete',
-          ),
-        ),
-        payload: 'download_complete_$sessionId',
-      );
+      // Clear taskbar progress if this was the current download
+      if (_currentDownloadSession == sessionId) {
+        await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
+        _currentDownloadSession = null;
+      }
 
-      _log('✅ DOWNLOAD NOTIFICATION COMPLETED', {
+      _log('✅ DOWNLOAD COMPLETED', {
         'fileName': fileName,
         'sessionId': sessionId,
         'totalBytes': totalBytes,
+        'duration': durationText,
       });
-
-      // Auto-dismiss after 5 seconds
-      Future.delayed(const Duration(seconds: 5), () {
-        _flutterLocalNotificationsPlugin.cancel(notificationId);
-      });
+      
+      print('✅ Download complete: $fileName$sizeText (took $durationText)');
     } catch (e) {
       _log('❌ FAILED TO COMPLETE DOWNLOAD NOTIFICATION', e.toString());
     }
@@ -205,18 +175,24 @@ class NotificationService {
       return;
     }
 
-    final notificationId = _activeDownloads.remove(sessionId);
-    if (notificationId == null) {
+    final downloadInfo = _activeDownloads.remove(sessionId);
+    if (downloadInfo == null) {
       return;
     }
 
     try {
-      await _flutterLocalNotificationsPlugin.cancel(notificationId);
+      // Clear taskbar progress if this was the current download
+      if (_currentDownloadSession == sessionId) {
+        await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
+        _currentDownloadSession = null;
+      }
       
-      _log('🛑 DOWNLOAD NOTIFICATION CANCELLED', {
+      _log('🛑 DOWNLOAD CANCELLED', {
         'fileName': fileName,
         'sessionId': sessionId,
       });
+      
+      print('🛑 Download cancelled: $fileName');
     } catch (e) {
       _log('❌ FAILED TO CANCEL DOWNLOAD NOTIFICATION', e.toString());
     }
@@ -230,6 +206,17 @@ class NotificationService {
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
+  /// Format duration to human readable format
+  static String _formatDuration(Duration duration) {
+    if (duration.inSeconds < 60) {
+      return '${duration.inSeconds}s';
+    } else if (duration.inMinutes < 60) {
+      return '${duration.inMinutes}m ${duration.inSeconds % 60}s';
+    } else {
+      return '${duration.inHours}h ${duration.inMinutes % 60}m';
+    }
+  }
+
   /// Clear all active download notifications
   static Future<void> clearAllDownloadNotifications() async {
     if (!_isInitialized || !Platform.isWindows) {
@@ -237,10 +224,9 @@ class NotificationService {
     }
 
     try {
-      for (final notificationId in _activeDownloads.values) {
-        await _flutterLocalNotificationsPlugin.cancel(notificationId);
-      }
       _activeDownloads.clear();
+      await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
+      _currentDownloadSession = null;
       
       _log('🧹 ALL DOWNLOAD NOTIFICATIONS CLEARED');
     } catch (e) {
