@@ -177,12 +177,20 @@ class NotificationService {
   // Generic notification method
   Future<void> _showNotification(String title, String message) async {
     try {
-      if (Platform.isMacOS && _flutterLocalNotificationsPlugin != null) {
-        await _showMacOSNotification(title, message);
-      } else if (Platform.isWindows && _windowsNotification != null) {
-        await _showWindowsNotification(title, message);
+      if (Platform.isMacOS) {
+        if (_flutterLocalNotificationsPlugin != null) {
+          await _showMacOSNotification(title, message);
+        } else {
+          _log('⚠️ MACOS NOTIFICATION SERVICE NOT INITIALIZED');
+        }
+      } else if (Platform.isWindows) {
+        if (_windowsNotification != null) {
+          await _showWindowsNotification(title, message);
+        } else {
+          _log('⚠️ WINDOWS NOTIFICATION SERVICE NOT INITIALIZED');
+        }
       } else {
-        _log('⚠️ NO NOTIFICATION PLATFORM AVAILABLE');
+        _log('⚠️ UNSUPPORTED PLATFORM FOR NOTIFICATIONS');
       }
     } catch (e) {
       _log('❌ FAILED TO SHOW NOTIFICATION', e.toString());
@@ -190,33 +198,63 @@ class NotificationService {
   }
 
   Future<void> _showMacOSNotification(String title, String message) async {
-    const DarwinNotificationDetails darwinNotificationDetails =
-        DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: false,
-      presentSound: true,
-    );
+    if (!Platform.isMacOS) {
+      _log('⚠️ ATTEMPTED TO SHOW MACOS NOTIFICATION ON NON-MACOS PLATFORM');
+      return;
+    }
+    
+    if (_flutterLocalNotificationsPlugin == null) {
+      _log('⚠️ FLUTTER LOCAL NOTIFICATIONS PLUGIN NOT INITIALIZED');
+      return;
+    }
+    
+    try {
+      const DarwinNotificationDetails darwinNotificationDetails =
+          DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: false,
+        presentSound: true,
+      );
 
-    const NotificationDetails notificationDetails =
-        NotificationDetails(macOS: darwinNotificationDetails);
+      const NotificationDetails notificationDetails =
+          NotificationDetails(macOS: darwinNotificationDetails);
 
-    await _flutterLocalNotificationsPlugin!.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000, // Use timestamp as ID
-      title,
-      message,
-      notificationDetails,
-    );
+      await _flutterLocalNotificationsPlugin!.show(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000, // Use timestamp as ID
+        title,
+        message,
+        notificationDetails,
+      );
+    } catch (e) {
+      _log('❌ ERROR IN MACOS NOTIFICATION', e.toString());
+      rethrow;
+    }
   }
 
   Future<void> _showWindowsNotification(String title, String message) async {
-    // Create notification message using plugin template
-    final notificationMessage = NotificationMessage.fromPluginTemplate(
-      DateTime.now().millisecondsSinceEpoch.toString(), // unique ID
-      title,
-      message,
-    );
+    if (!Platform.isWindows) {
+      _log('⚠️ ATTEMPTED TO SHOW WINDOWS NOTIFICATION ON NON-WINDOWS PLATFORM');
+      return;
+    }
     
-    await _windowsNotification!.showNotificationPluginTemplate(notificationMessage);
+    if (_windowsNotification == null) {
+      _log('⚠️ WINDOWS NOTIFICATION SERVICE NOT INITIALIZED');
+      return;
+    }
+    
+    try {
+      // Create notification message using plugin template
+      final notificationMessage = NotificationMessage.fromPluginTemplate(
+        DateTime.now().millisecondsSinceEpoch.toString(), // unique ID
+        title,
+        message,
+      );
+      
+      await _windowsNotification!.showNotificationPluginTemplate(notificationMessage);
+    } catch (e) {
+      _log('❌ ERROR IN WINDOWS NOTIFICATION', e.toString());
+      rethrow;
+    }
   }
 
   // Dispose method for cleanup
