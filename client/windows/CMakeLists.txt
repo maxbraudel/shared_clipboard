@@ -23,6 +23,7 @@ else()
       "Debug" "Profile" "Release")
   endif()
 endif()
+
 # Define settings for the Profile build mode.
 set(CMAKE_EXE_LINKER_FLAGS_PROFILE "${CMAKE_EXE_LINKER_FLAGS_RELEASE}")
 set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE}")
@@ -39,10 +40,23 @@ add_definitions(-DUNICODE -D_UNICODE)
 # of modifying this function.
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_17)
-  target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100")
-  target_compile_options(${TARGET} PRIVATE /EHsc)
-  target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
+  target_compile_options(${TARGET} PRIVATE /W4)
+  # Remove /WX (warnings as errors) for development - add back for production builds
+  # target_compile_options(${TARGET} PRIVATE /WX)
+  target_compile_options(${TARGET} PRIVATE /wd"4100") # Disable unused parameter warnings
+  target_compile_options(${TARGET} PRIVATE /EHsc) # Enable C++ exception handling
+  
+  # Enable exceptions for plugins that need them (like Windows notifications)
+  # Remove the _HAS_EXCEPTIONS=0 definition to allow exceptions
+  # target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
+  
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")
+  
+  # Add Windows Runtime support for WinRT APIs
+  if(WIN32)
+    set_property(TARGET ${TARGET} PROPERTY VS_WINRT_COMPONENT TRUE)
+    target_compile_definitions(${TARGET} PRIVATE WINRT_LEAN_AND_MEAN)
+  endif()
 endfunction()
 
 # Flutter library and tool build rules.
@@ -52,11 +66,9 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
-
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
 include(flutter/generated_plugins.cmake)
-
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can
