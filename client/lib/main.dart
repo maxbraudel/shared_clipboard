@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_clipboard/ui/home_page.dart';
 import 'package:shared_clipboard/services/tray_service.dart';
+import 'package:shared_clipboard/services/windows_progress_notification.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 
@@ -30,6 +31,9 @@ void main() async {
   
   // Initialize system tray after window is ready
   await TrayService.init();
+  
+  // Initialize Windows progress notifications
+  await WindowsProgressNotification.initializeWindows();
   
   // Run the app
   runApp(BackgroundApp());
