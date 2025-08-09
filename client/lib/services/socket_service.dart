@@ -6,10 +6,16 @@ class SocketService {
   late IO.Socket socket;
   late WebRTCService _webrtcService;
   
+  // Enhanced request management
+  final Map<String, String> _activeRequests = {}; // requestId -> status
+  final Map<String, DateTime> _requestTimestamps = {};
+  
   // Callbacks for UI updates
   Function(Map<String, dynamic> device)? onDeviceConnected;
   Function(Map<String, dynamic> device)? onDeviceDisconnected;
   Function(List<Map<String, dynamic>> devices)? onConnectedDevicesList;
+  Function(String requestId, int position, int estimatedWait)? onRequestQueued;
+  Function(String requestId)? onRequestCompleted;
 
   // Helper function for timestamped logging
   void _log(String message, [dynamic data]) {
@@ -117,7 +123,9 @@ class SocketService {
 
     socket.on('share-request', (data) async {
       _log('📥 SHARE REQUEST RECEIVED', data);
-      String requesterId = data['from'] ?? 'unknown';
+      final requesterId = data['from'] ?? 'unknown';
+      final requestId = data['requestId'];
+      
       // Guard: if server mistakenly routes our own request back to us, ignore
       if (requesterId == socket.id) {
         _log('🚫 IGNORING SELF SHARE-REQUEST', {
@@ -126,22 +134,71 @@ class SocketService {
         });
         return;
       }
-      _log('📤 CREATING OFFER TO SEND CLIPBOARD TO REQUESTER', requesterId);
+      
+      _log('📥 ENHANCED SHARE REQUEST RECEIVED', {
+        'from': requesterId,
+        'requestId': requestId
+      });
       
       try {
-        await _webrtcService.createOffer(requesterId);
-        _log('✅ WEBRTC createOffer COMPLETED SUCCESSFULLY');
+        // Create a new clipboard session for this request
+        final sessionId = await _webrtcService.createClipboardSession(requesterId, requestId);
+        
+        _log('📋 CLIPBOARD SESSION CREATED', {
+          'sessionId': sessionId,
+          'requestId': requestId,
+          'requester': requesterId
+        });
+        
+        // Create offer with session context
+        await _webrtcService.createOffer(requesterId, requestId: requestId);
+        _log('✅ WEBRTC createOffer COMPLETED SUCCESSFULLY', {
+          'requestId': requestId,
+          'sessionId': sessionId
+        });
       } catch (e, stackTrace) {
-        _log('❌ ERROR CALLING WEBRTC createOffer', e.toString());
+        _log('❌ ERROR PROCESSING SHARE REQUEST', {
+          'requestId': requestId,
+          'error': e.toString()
+        });
         _log('❌ STACK TRACE', stackTrace.toString());
+        
+        // Notify server of failure
+        sendRequestCancelled(requestId, reason: 'processing error: $e');
       }
+    });
+    
+    // Handle request queued notification
+    socket.on('request-queued', (data) {
+      final requestId = data['requestId'];
+      final position = data['position'] ?? 0;
+      final estimatedWait = data['estimatedWait'] ?? 0;
+      
+      _log('📋 REQUEST QUEUED BY SERVER', {
+        'requestId': requestId,
+        'position': position,
+        'estimatedWait': '${estimatedWait}s'
+      });
+      
+      onRequestQueued?.call(requestId, position, estimatedWait);
+    });
+    
+    // Handle no sharer available (legacy support)
+    socket.on('no-sharer-available', (data) {
+      _log('❌ NO SHARER AVAILABLE', data);
     });
 
     socket.on('webrtc-signal', (data) async {
-      _log('🔄 WEBRTC SIGNAL RECEIVED', {
+      final requestId = data['requestId'];
+      final connectionId = data['signal']?['connectionId'];
+      
+      _log('🔄 ENHANCED WEBRTC SIGNAL RECEIVED', {
         'from': data['from'],
-        'signalType': data['signal']['type']
+        'signalType': data['signal']['type'],
+        'connectionId': connectionId ?? 'none',
+        'requestId': requestId ?? 'none'
       });
+      
       // Guard: ignore echo of our own signals (can happen if server pairs us with ourselves)
       if (data is Map && data['from'] == socket.id) {
         _log('🚫 IGNORING SELF-GENERATED WEBRTC SIGNAL ECHO', {
@@ -287,35 +344,76 @@ class SocketService {
     socket.emit('share-ready');
   }
 
-  // Defensive: explicitly clear any ready-to-share status before requesting
-  void clearShareReady() {
-    _log('🧹 CLEARING SHARE-READY STATE');
-    // Try common event names the server might recognize
-    socket.emit('share-not-ready');
-    socket.emit('not-ready');
-  }
-
-  void sendRequestShare() {
-    _log('📤 SENDING REQUEST-SHARE');
-    socket.emit('request-share', {});
-  }
-
-  void sendSignal(String to, dynamic signal) {
-    _log('📤 SENDING WEBRTC SIGNAL', {
-      'to': to,
-      'signalType': signal['type'],
-    });
-    // Guard: do not send to ourselves
-    if (to == socket.id) {
-      _log('🚫 BLOCKED SENDING SIGNAL TO SELF', {
-        'to': to,
-        'ourId': socket.id,
-        'signalType': signal['type'],
-      });
-      return;
+  /// Enhanced request share with optional target device and priority
+  String sendRequestShare({String? targetDevice, String priority = 'normal'}) {
+    final requestData = {
+      'priority': priority,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    };
+    
+    if (targetDevice != null) {
+      requestData['targetDevice'] = targetDevice;
     }
     
-    socket.emit('webrtc-signal', {'to': to, 'signal': signal});
+    _log('📤 SENDING ENHANCED REQUEST-SHARE', {
+      'targetDevice': targetDevice ?? 'any',
+      'priority': priority
+    });
+    
+    socket.emit('request-share', requestData);
+    
+    // Generate a temporary request ID for tracking (server will provide the real one)
+    final tempRequestId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    _activeRequests[tempRequestId] = 'pending';
+    _requestTimestamps[tempRequestId] = DateTime.now();
+    
+    return tempRequestId;
+  }
+  
+  /// Send request completion notification
+  void sendRequestCompleted(String requestId) {
+    _log('📤 SENDING REQUEST-COMPLETED', {'requestId': requestId});
+    socket.emit('request-completed', {'requestId': requestId});
+    
+    _activeRequests.remove(requestId);
+    _requestTimestamps.remove(requestId);
+    onRequestCompleted?.call(requestId);
+  }
+  
+  /// Send request cancellation
+  void sendRequestCancelled(String requestId, {String reason = 'user cancelled'}) {
+    _log('📤 SENDING REQUEST-CANCELLED', {'requestId': requestId, 'reason': reason});
+    socket.emit('request-cancelled', {'requestId': requestId, 'reason': reason});
+    
+    _activeRequests.remove(requestId);
+    _requestTimestamps.remove(requestId);
+  }
+  
+  /// Clear share ready status
+  void clearShareReady() {
+    _log('📤 CLEARING SHARE-READY');
+    socket.emit('share-ready', false);
+  }
+
+  /// Enhanced signal sending with connection and request ID support
+  void sendSignal(String to, dynamic signal, {String? requestId}) {
+    final signalData = {
+      'to': to,
+      'signal': signal,
+    };
+    
+    if (requestId != null) {
+      signalData['requestId'] = requestId;
+    }
+    
+    _log('📤 SENDING ENHANCED WEBRTC SIGNAL', {
+      'to': to,
+      'signalType': signal['type'],
+      'connectionId': signal['connectionId'] ?? 'none',
+      'requestId': requestId ?? 'none'
+    });
+    
+    socket.emit('webrtc-signal', signalData);
   }
 
   bool get isConnected => socket.connected;
