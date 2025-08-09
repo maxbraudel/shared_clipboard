@@ -15,8 +15,6 @@
 #include <window_manager/window_manager_plugin.h>
 #include <windows_taskbar/windows_taskbar_plugin.h>
 
-#include "../runner/windows_notifications_plugin.h"
-
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   ClipboardWatcherPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("ClipboardWatcherPlugin"));
@@ -32,8 +30,6 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("SystemTrayPlugin"));
   WindowManagerPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("WindowManagerPlugin"));
-  WindowsNotificationsPluginRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("WindowsNotificationsPlugin"));
   WindowsTaskbarPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("WindowsTaskbarPlugin"));
 }

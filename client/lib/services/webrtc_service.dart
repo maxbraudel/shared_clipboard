@@ -6,7 +6,6 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
-import 'package:shared_clipboard/services/windows_progress_notification.dart';
 import 'package:file_picker/file_picker.dart';
 
 
@@ -35,11 +34,6 @@ class WebRTCService {
   final Map<String, _FileSession> _fileSessions = {};
   final Map<String, Completer<void>> _sessionReadyCompleters = {};
   Completer<void>? _ackCompleter;
-  
-  // Windows progress notification state
-  final Map<String, String> _activeNotifications = {}; // sessionId -> notification title
-  final Map<String, int> _sessionTotalBytes = {}; // sessionId -> total bytes
-  final Map<String, int> _sessionReceivedBytes = {}; // sessionId -> received bytes
   
   // Callback to send signals back to socket service
   Function(String to, dynamic signal)? onSignalGenerated;
@@ -971,10 +965,6 @@ class WebRTCService {
 
       final session = _FileSession(sessionDir!, incomingFiles);
       _fileSessions[sessionId] = session;
-      
-      // Initialize Windows progress notification
-      await _initializeProgressNotification(sessionId, incomingFiles);
-      
       _log('📂 FILE SESSION PREPARED', {
         'sessionId': sessionId,
         'dir': session.dirPath,
@@ -1007,18 +997,10 @@ class WebRTCService {
       final incoming = session.files[fileIndex];
       incoming.sink.add(bytes);
       incoming.received += bytes.length;
-      
-      // Update session total received bytes for progress notification
-      final currentSessionReceived = _sessionReceivedBytes[sessionId] ?? 0;
-      _sessionReceivedBytes[sessionId] = currentSessionReceived + bytes.length;
-      
       final receivedMB = incoming.received / (1024 * 1024);
       if (receivedMB.toInt() > (incoming.lastReportedMB ?? -1)) {
         _log('⬇️ PROGRESS', {'file': incoming.name, 'received': incoming.received, 'of': incoming.size});
         incoming.lastReportedMB = receivedMB.toInt();
-        
-        // Update Windows progress notification
-        await _updateProgressNotification(sessionId);
       }
 
       // Send ACK for flow control
@@ -1099,26 +1081,15 @@ class WebRTCService {
         ));
       }
       await _fileTransferService.setClipboardContent(ClipboardContent.files(filesForClipboard));
-      
-      // Show completion notification and hide progress notification
-      await _showCompletionNotification(sessionId, session.files);
-      await _hideProgressNotification(sessionId);
-      
       _log('🎉 FILE SESSION FINALIZED', {'sessionId': sessionId, 'files': filesForClipboard.length, 'verified': allOk});
     } catch (e) {
       _log('❌ ERROR FINALIZING FILE SESSION', e.toString());
-      // Hide progress notification on error too
-      await _hideProgressNotification(sessionId);
     }
   }
 
   Future<void> _abortFileSession(String sessionId) async {
     final session = _fileSessions.remove(sessionId);
     if (session == null) return;
-    
-    // Hide progress notification if active
-    await _hideProgressNotification(sessionId);
-    
     try {
       for (final f in session.files) {
         try {
@@ -1135,138 +1106,6 @@ class WebRTCService {
     } catch (e) {
       _log('❌ ERROR ABORTING FILE SESSION', e.toString());
     }
-  }
-
-  // Initialize Windows progress notification for file download
-  Future<void> _initializeProgressNotification(String sessionId, List<_IncomingFile> files) async {
-    if (!Platform.isWindows) return;
-    
-    try {
-      // Calculate total bytes for all files
-      int totalBytes = 0;
-      for (final file in files) {
-        totalBytes += file.size;
-      }
-      
-      // Store session progress tracking data
-      _sessionTotalBytes[sessionId] = totalBytes;
-      _sessionReceivedBytes[sessionId] = 0;
-      
-      // Create notification title
-      String title;
-      String subtitle;
-      if (files.length == 1) {
-        title = 'Downloading File';
-        subtitle = files.first.name;
-      } else {
-        title = 'Downloading Files';
-        subtitle = '${files.length} files (${_formatBytes(totalBytes)})';
-      }
-      
-      _activeNotifications[sessionId] = title;
-      
-      // Initialize Windows notifications if not already done
-      await WindowsProgressNotification.initializeWindows();
-      
-      // Show initial progress toast
-      await WindowsProgressNotification.showProgressToast(
-        title: title,
-        subtitle: subtitle,
-        progress: 0,
-        status: 'Starting download...',
-        progressLabel: 'Downloaded',
-      );
-      
-      _log('📢 PROGRESS NOTIFICATION INITIALIZED', {
-        'sessionId': sessionId,
-        'title': title,
-        'totalBytes': totalBytes,
-        'files': files.length
-      });
-    } catch (e) {
-      _log('❌ ERROR INITIALIZING PROGRESS NOTIFICATION', e.toString());
-    }
-  }
-
-  // Update Windows progress notification
-  Future<void> _updateProgressNotification(String sessionId) async {
-    if (!Platform.isWindows || !_activeNotifications.containsKey(sessionId)) return;
-    
-    try {
-      final totalBytes = _sessionTotalBytes[sessionId] ?? 0;
-      final receivedBytes = _sessionReceivedBytes[sessionId] ?? 0;
-      
-      if (totalBytes == 0) return;
-      
-      final progress = ((receivedBytes / totalBytes) * 100).round().clamp(0, 100);
-      final status = '${_formatBytes(receivedBytes)} / ${_formatBytes(totalBytes)} (${progress}%)';
-      
-      await WindowsProgressNotification.updateProgress(
-        progress: progress,
-        status: status,
-      );
-    } catch (e) {
-      _log('❌ ERROR UPDATING PROGRESS NOTIFICATION', e.toString());
-    }
-  }
-
-  // Hide Windows progress notification
-  Future<void> _hideProgressNotification(String sessionId) async {
-    if (!Platform.isWindows || !_activeNotifications.containsKey(sessionId)) return;
-    
-    try {
-      await WindowsProgressNotification.hideToast();
-      _activeNotifications.remove(sessionId);
-      _sessionTotalBytes.remove(sessionId);
-      _sessionReceivedBytes.remove(sessionId);
-      
-      _log('🔇 PROGRESS NOTIFICATION HIDDEN', sessionId);
-    } catch (e) {
-      _log('❌ ERROR HIDING PROGRESS NOTIFICATION', e.toString());
-    }
-  }
-
-  // Show completion notification
-  Future<void> _showCompletionNotification(String sessionId, List<_IncomingFile> files) async {
-    if (!Platform.isWindows) return;
-    
-    try {
-      String title;
-      String subtitle;
-      String message;
-      
-      if (files.length == 1) {
-        title = 'Download Complete';
-        subtitle = files.first.name;
-        message = 'File downloaded successfully!';
-      } else {
-        final totalSize = files.fold<int>(0, (sum, file) => sum + file.size);
-        title = 'Downloads Complete';
-        subtitle = '${files.length} files (${_formatBytes(totalSize)})';
-        message = 'All files downloaded successfully!';
-      }
-      
-      await WindowsProgressNotification.showCompletionToast(
-        title: title,
-        subtitle: subtitle,
-        message: message,
-      );
-      
-      _log('🎉 COMPLETION NOTIFICATION SHOWN', {
-        'sessionId': sessionId,
-        'files': files.length
-      });
-    } catch (e) {
-      _log('❌ ERROR SHOWING COMPLETION NOTIFICATION', e.toString());
-    }
-  }
-
-  // Format bytes for display
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '${bytes} B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
   void dispose() {
