@@ -14,6 +14,9 @@
 // #include <winrt/Windows.UI.Notifications.h>
 // #include <winrt/Windows.Data.Xml.Dom.h>
 
+// Global plugin instance to avoid inheritance issues
+static std::unique_ptr<WindowsNotificationsPlugin> g_plugin_instance;
+
 // static
 void WindowsNotificationsPlugin::RegisterWithRegistrar(
     flutter::PluginRegistrarWindows* registrar) {
@@ -22,14 +25,20 @@ void WindowsNotificationsPlugin::RegisterWithRegistrar(
           registrar->messenger(), "windows_notifications",
           &flutter::StandardMethodCodec::GetInstance());
 
-  auto plugin = std::make_unique<WindowsNotificationsPlugin>();
+  g_plugin_instance = std::make_unique<WindowsNotificationsPlugin>();
 
   channel->SetMethodCallHandler(
-      [plugin_pointer = plugin.get()](const auto& call, auto result) {
-        plugin_pointer->HandleMethodCall(call, std::move(result));
+      [](const auto& call, auto result) {
+        if (g_plugin_instance) {
+          g_plugin_instance->HandleMethodCall(call, std::move(result));
+        } else {
+          result->Error("PLUGIN_ERROR", "Plugin not initialized");
+        }
       });
 
-  registrar->AddPlugin(std::move(plugin));
+  // Don't call AddPlugin - just keep the channel alive by storing it
+  // This avoids the inheritance requirement
+  static auto stored_channel = std::move(channel);
 }
 
 WindowsNotificationsPlugin::WindowsNotificationsPlugin() : initialized_(false) {}
