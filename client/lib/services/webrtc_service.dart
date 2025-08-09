@@ -6,7 +6,6 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
-import 'package:shared_clipboard/services/notification_service.dart';
 import 'package:file_picker/file_picker.dart';
 
 
@@ -513,16 +512,10 @@ class WebRTCService {
         _log('📁 RECEIVED FILES (JSON PAYLOAD)', '${clipboardContent.files.length} files');
         _fileTransferService.setClipboardContent(clipboardContent);
         _log('✅ FILES HANDLED VIA EXISTING FLOW');
-        
-        // Show notification for clipboard retrieval with files
-        NotificationService.showClipboardRetrieved();
       } else {
         _log('📝 RECEIVED TEXT', clipboardContent.text);
         Clipboard.setData(ClipboardData(text: clipboardContent.text));
         _log('📋 TEXT CLIPBOARD UPDATED SUCCESSFULLY');
-        
-        // Show notification for clipboard retrieval
-        NotificationService.showClipboardRetrieved();
       }
     } catch (e) {
       _log('❌ ERROR PROCESSING RECEIVED DATA', e.toString());
@@ -942,19 +935,12 @@ class WebRTCService {
       String? sessionDir;
       for (final meta in filesMeta) {
         final name = (meta['name'] as String?) ?? 'file';
-        final size = (meta['size'] as int?) ?? 0;
-        
-        // Start download progress tracking for this file
-        NotificationService.startDownloadProgress('$sessionId-$name', name);
-        
         String? savePath = await FilePicker.platform.saveFile(
           dialogTitle: 'Save incoming file',
           fileName: name,
         );
 
         if (savePath == null || savePath.isEmpty) {
-          // User cancelled - show download failed notification
-          NotificationService.showDownloadFailed('$sessionId-$name', name, error: 'User cancelled download');
           _log('🚫 USER CANCELLED SAVE DIALOG');
           // Clean up any files that were already created for this session
           for (final created in incomingFiles) {
@@ -1017,12 +1003,6 @@ class WebRTCService {
         incoming.lastReportedMB = receivedMB.toInt();
       }
 
-      // Update download progress for notifications
-      if (incoming.size > 0) {
-        final progress = (incoming.received / incoming.size) * 100;
-        NotificationService.updateDownloadProgress('$sessionId-${incoming.name}', progress);
-      }
-
       // Send ACK for flow control
       session.chunksReceived++;
       if (session.chunksReceived % 100 == 0) {
@@ -1031,13 +1011,6 @@ class WebRTCService {
       }
     } catch (e) {
       _log('❌ ERROR WRITING FILE CHUNK', {'sessionId': sessionId, 'index': fileIndex, 'error': e.toString()});
-      
-      // Show download failed notification
-      final session = _fileSessions[sessionId];
-      if (session != null && fileIndex < session.files.length) {
-        final fileName = session.files[fileIndex].name;
-        NotificationService.showDownloadFailed('$sessionId-$fileName', fileName, error: e.toString());
-      }
     }
   }
 
@@ -1075,9 +1048,6 @@ class WebRTCService {
           await f.sink.flush();
           await f.sink.close();
         } catch (_) {}
-        
-        // Show download completion notification for each file
-        NotificationService.showDownloadCompleted('$sessionId-${f.name}', f.name);
       }
       // Optional: verify checksums and sizes
       bool allOk = true;

@@ -2,7 +2,6 @@ import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:shared_clipboard/services/socket_service.dart';
 import 'package:shared_clipboard/services/webrtc_service.dart';
-import 'package:shared_clipboard/services/notification_service.dart';
 
 
 class ClipboardService {
@@ -44,9 +43,6 @@ class ClipboardService {
   void shareClipboard() async {
     print("Sharing clipboard content");
     _socketService.sendShareReady();
-    
-    // Show notification that clipboard is being shared
-    await NotificationService.showClipboardShared();
   }
 
   void requestClipboard() {

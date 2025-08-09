@@ -6,7 +6,6 @@ import 'dart:async';
 import 'package:shared_clipboard/services/socket_service.dart';
 import 'package:shared_clipboard/services/webrtc_service.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
-import 'package:shared_clipboard/services/notification_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -275,13 +274,9 @@ class _HomePageState extends State<HomePage> {
       
       if (clipboardContent.isFiles && clipboardContent.files.isNotEmpty) {
         // Files detected in clipboard
-        print('📁 FILES DETECTED IN CLIPBOARD: ${clipboardContent.files.length} files');
+        print('� FILES DETECTED IN CLIPBOARD: ${clipboardContent.files.length} files');
         print('📤 SENDING SHARE-READY TO SERVER (FILES)');
         _socketService.sendShareReady();
-        
-        // Show notification that clipboard with files is being shared
-        await NotificationService.showClipboardShared();
-        
         setState(() {
           final fileNames = clipboardContent.files.map((f) => f.name).join(', ');
           _status = 'Ready to share ${clipboardContent.files.length} files: ${_truncateText(fileNames)}';
@@ -289,13 +284,9 @@ class _HomePageState extends State<HomePage> {
         print("📋 FILES READY TO SHARE: ${clipboardContent.files.map((f) => f.name).join(', ')}");
       } else if (clipboardContent.text.isNotEmpty) {
         // Regular text in clipboard
-        print('📝 TEXT DETECTED IN CLIPBOARD: "${clipboardContent.text}"');
+        print('� TEXT DETECTED IN CLIPBOARD: "${clipboardContent.text}"');
         print('📤 SENDING SHARE-READY TO SERVER (TEXT)');
         _socketService.sendShareReady();
-        
-        // Show notification that clipboard with text is being shared
-        await NotificationService.showClipboardShared();
-        
         setState(() {
           _status = 'Ready to share: "${_truncateText(clipboardContent.text)}"';
         });
