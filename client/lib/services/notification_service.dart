@@ -40,14 +40,6 @@ class NotificationService {
         defaultPresentList: true,
       );
 
-      // Windows initialization
-      const WindowsInitializationSettings initializationSettingsWindows =
-          WindowsInitializationSettings(
-        appName: 'Shared Clipboard',
-        appUserModelId: 'com.sharedclipboard.app',
-        defaultActionName: 'Open notification',
-      );
-
       // Linux initialization
       const LinuxInitializationSettings initializationSettingsLinux =
           LinuxInitializationSettings(defaultActionName: 'Open notification');
@@ -56,7 +48,6 @@ class NotificationService {
         android: initializationSettingsAndroid,
         iOS: initializationSettingsIOS,
         macOS: initializationSettingsMacOS,
-        windows: initializationSettingsWindows,
         linux: initializationSettingsLinux,
       );
 
@@ -112,10 +103,6 @@ class NotificationService {
       android: androidDetails,
       iOS: macosDetails,
       macOS: macosDetails,
-      windows: WindowsNotificationDetails(
-        appUserModelId: 'com.sharedclipboard.app',
-        duration: WindowsNotificationDuration.short,
-      ),
     );
 
     final String message = deviceName != null 
@@ -158,10 +145,6 @@ class NotificationService {
       android: androidDetails,
       iOS: macosDetails,
       macOS: macosDetails,
-      windows: WindowsNotificationDetails(
-        appUserModelId: 'com.sharedclipboard.app',
-        duration: WindowsNotificationDuration.short,
-      ),
     );
 
     final String message = fromDevice != null 
@@ -259,10 +242,6 @@ class NotificationService {
       android: androidDetails,
       iOS: macosDetails,
       macOS: macosDetails,
-      windows: WindowsNotificationDetails(
-        appUserModelId: 'com.sharedclipboard.app',
-        duration: WindowsNotificationDuration.short,
-      ),
     );
 
     await _notifications.show(
@@ -313,10 +292,6 @@ class NotificationService {
       android: androidDetails,
       iOS: macosDetails,
       macOS: macosDetails,
-      windows: WindowsNotificationDetails(
-        appUserModelId: 'com.sharedclipboard.app',
-        duration: WindowsNotificationDuration.short,
-      ),
     );
 
     await _notifications.show(
@@ -367,10 +342,6 @@ class NotificationService {
       android: androidDetails,
       iOS: macosDetails,
       macOS: macosDetails,
-      windows: WindowsNotificationDetails(
-        appUserModelId: 'com.sharedclipboard.app',
-        duration: WindowsNotificationDuration.short,
-      ),
     );
 
     final String message = error != null 
@@ -415,10 +386,6 @@ class NotificationService {
       android: androidDetails,
       iOS: macosDetails,
       macOS: macosDetails,
-      windows: WindowsNotificationDetails(
-        appUserModelId: 'com.sharedclipboard.app',
-        duration: WindowsNotificationDuration.short,
-      ),
     );
 
     // Add a small delay to ensure proper delivery
@@ -462,10 +429,6 @@ class NotificationService {
       android: androidDetails,
       iOS: macosDetails,
       macOS: macosDetails,
-      windows: WindowsNotificationDetails(
-        appUserModelId: 'com.sharedclipboard.app',
-        duration: WindowsNotificationDuration.short,
-      ),
     );
 
     await _notifications.show(
