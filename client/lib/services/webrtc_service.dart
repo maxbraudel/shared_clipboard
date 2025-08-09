@@ -128,7 +128,12 @@ class WebRTCService {
     _dataChannel!.onDataChannelState = (state) {
       if (state == RTCDataChannelState.RTCDataChannelOpen) {
         _log('✅ DATA CHANNEL OPENED');
-        _sendClipboardContent();
+        // Only send content if we're the sender (have pending content)
+        if (_pendingClipboardContent != null) {
+          _sendClipboardContent();
+        } else {
+          _log('📡 RECEIVER DATA CHANNEL READY - WAITING FOR CONTENT');
+        }
       }
     };
     
@@ -138,16 +143,16 @@ class WebRTCService {
   }
   
   /// Handle legacy data channel messages
-  void _handleLegacyDataChannelMessage(RTCDataChannelMessage message) {
+  Future<void> _handleLegacyDataChannelMessage(RTCDataChannelMessage message) async {
     try {
       final data = jsonDecode(message.text);
       
       if (data['__sc_proto'] == 2) {
         // Protocol v2 message handling
-        _handleProtocolV2Message(data);
+        await _handleProtocolV2Message(data);
       } else {
         // Legacy text message
-        _handleTextMessage(message.text);
+        await _handleTextMessage(message.text);
       }
     } catch (e) {
       _log('❌ ERROR HANDLING MESSAGE', e.toString());
@@ -155,12 +160,12 @@ class WebRTCService {
   }
   
   /// Handle protocol v2 messages
-  void _handleProtocolV2Message(Map<String, dynamic> data) {
+  Future<void> _handleProtocolV2Message(Map<String, dynamic> data) async {
     final kind = data['kind'];
     
     switch (kind) {
       case 'text':
-        _handleTextContent(data['content']);
+        await _handleTextContent(data['content']);
         break;
       case 'files_meta':
         _handleFilesMeta(data);
@@ -183,16 +188,53 @@ class WebRTCService {
   }
   
   /// Handle text content
-  void _handleTextContent(String text) {
+  Future<void> _handleTextContent(String text) async {
     _log('📝 RECEIVED TEXT CONTENT', text.length);
-    // Set clipboard content
-    // Implementation depends on your clipboard service
+    
+    try {
+      // Set the received text to clipboard
+      final clipboardContent = ClipboardContent.text(text);
+      await _fileTransferService.setClipboardContent(clipboardContent);
+      
+      _log('✅ TEXT CONTENT SET TO CLIPBOARD', text);
+      
+      // Show notification
+      _notificationService.showClipboardReceiveSuccess(
+        'Text received from ${_peerId ?? "Unknown Device"}'
+      );
+    } catch (e) {
+      _log('❌ ERROR SETTING TEXT TO CLIPBOARD', e.toString());
+      
+      // Show error notification
+      _notificationService.showClipboardReceiveFailure(
+        'Failed to set text to clipboard: $e'
+      );
+    }
   }
   
   /// Handle text message (legacy)
-  void _handleTextMessage(String text) {
+  Future<void> _handleTextMessage(String text) async {
     _log('📝 RECEIVED LEGACY TEXT', text.length);
-    // Handle legacy text messages
+    
+    try {
+      // Set the received text to clipboard
+      final clipboardContent = ClipboardContent.text(text);
+      await _fileTransferService.setClipboardContent(clipboardContent);
+      
+      _log('✅ LEGACY TEXT CONTENT SET TO CLIPBOARD', text);
+      
+      // Show notification
+      _notificationService.showClipboardReceiveSuccess(
+        'Text received from ${_peerId ?? "Unknown Device"}'
+      );
+    } catch (e) {
+      _log('❌ ERROR SETTING LEGACY TEXT TO CLIPBOARD', e.toString());
+      
+      // Show error notification
+      _notificationService.showClipboardReceiveFailure(
+        'Failed to set text to clipboard: $e'
+      );
+    }
   }
   
   /// Handle files metadata
@@ -403,7 +445,9 @@ class WebRTCService {
       if (state == RTCDataChannelState.RTCDataChannelOpen) {
         _log('✅ DATA CHANNEL OPENED', connectionId);
         if (!isReceiver) {
-          _sendClipboardContentToConnection(connectionId);
+          await _sendClipboardContentToConnection(connectionId);
+        } else {
+          _log('📡 RECEIVER DATA CHANNEL READY', connectionId);
         }
       }
     };
@@ -414,15 +458,53 @@ class WebRTCService {
   }
   
   /// Handle data channel message for specific connection
-  void _handleDataChannelMessage(String connectionId, RTCDataChannelMessage message) {
+  Future<void> _handleDataChannelMessage(String connectionId, RTCDataChannelMessage message) async {
     // Similar to legacy handling but connection-specific
-    _handleLegacyDataChannelMessage(message);
+    await _handleLegacyDataChannelMessage(message);
   }
   
   /// Send clipboard content to specific connection
-  void _sendClipboardContentToConnection(String connectionId) {
-    // Implementation for sending clipboard content to specific connection
+  Future<void> _sendClipboardContentToConnection(String connectionId) async {
     _log('📤 SENDING CLIPBOARD CONTENT TO CONNECTION', connectionId);
+    
+    try {
+      // Read current clipboard content
+      final clipboardContent = await _fileTransferService.getClipboardContent();
+      
+      if (clipboardContent.isFiles) {
+        _log('📁 SENDING FILES TO CONNECTION', {'connectionId': connectionId, 'fileCount': clipboardContent.files.length});
+        await _sendFilesContentToConnection(connectionId, clipboardContent);
+      } else if (clipboardContent.text.isNotEmpty) {
+        _log('📝 SENDING TEXT TO CONNECTION', {'connectionId': connectionId, 'textLength': clipboardContent.text.length});
+        await _sendTextContentToConnection(connectionId, clipboardContent.text);
+      } else {
+        _log('❌ NO CLIPBOARD CONTENT TO SEND TO CONNECTION', connectionId);
+      }
+    } catch (e) {
+      _log('❌ ERROR READING CLIPBOARD FOR CONNECTION', {'connectionId': connectionId, 'error': e.toString()});
+    }
+  }
+  
+  /// Send text content to specific connection
+  Future<void> _sendTextContentToConnection(String connectionId, String text) async {
+    final channel = _dataChannels[connectionId];
+    if (channel?.state == RTCDataChannelState.RTCDataChannelOpen) {
+      final message = jsonEncode({
+        '__sc_proto': 2,
+        'kind': 'text',
+        'content': text,
+      });
+      channel!.send(RTCDataChannelMessage(message));
+      _log('📤 TEXT CONTENT SENT TO CONNECTION', {'connectionId': connectionId, 'textLength': text.length});
+    } else {
+      _log('❌ DATA CHANNEL NOT AVAILABLE FOR CONNECTION', connectionId);
+    }
+  }
+  
+  /// Send files content to specific connection
+  Future<void> _sendFilesContentToConnection(String connectionId, ClipboardContent content) async {
+    _log('📁 SENDING FILES TO CONNECTION', {'connectionId': connectionId, 'fileCount': content.files.length});
+    // Implementation for sending files to specific connection
   }
   
   /// Send clipboard content (legacy)
