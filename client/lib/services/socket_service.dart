@@ -151,12 +151,18 @@ class SocketService {
         return;
       }
       
+      final fromPeer = data['from'];
+      if (fromPeer == null) {
+        _log('❌ WEBRTC SIGNAL MISSING FROM PEER ID', data);
+        return;
+      }
+      
       if (data['signal']['type'] == 'offer') {
-        await _webrtcService.handleOffer(data['signal'], data['from']);
+        await _webrtcService.handleOffer(data['signal'], fromPeer);
       } else if (data['signal']['type'] == 'answer') {
-        await _webrtcService.handleAnswer(data['signal']);
+        await _webrtcService.handleAnswer(data['signal'], fromPeer);
       } else if (data['signal']['type'] == 'candidate') {
-        await _webrtcService.handleCandidate(data['signal']);
+        await _webrtcService.handleCandidate(data['signal'], fromPeer);
       }
     });
 
