@@ -1,5 +1,6 @@
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_clipboard/services/webrtc_service.dart';
+import 'package:shared_clipboard/services/notification_service.dart';
 import 'dart:io';
 
 class SocketService {
@@ -275,6 +276,13 @@ class SocketService {
           });
         }
       }
+    });
+
+    // Handle no-sharer-available event
+    socket.on('no-sharer-available', (data) {
+      _log('📱 NO SHARER AVAILABLE', data);
+      // Show notification to user
+      NotificationService.showNoSharerAvailable();
     });
 
     socket.onDisconnect((reason) {

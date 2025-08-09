@@ -33,9 +33,11 @@ class NotificationService {
         requestSoundPermission: true,
         requestBadgePermission: true,
         requestAlertPermission: true,
+        requestCriticalPermission: true,
         defaultPresentAlert: true,
         defaultPresentSound: true,
         defaultPresentBanner: true,
+        defaultPresentList: true,
       );
 
       // Windows initialization
@@ -357,8 +359,92 @@ class NotificationService {
     debugPrint('❌ Download failure notification sent: $fileName');
   }
 
+  /// Show notification when no sharer is available
+  static Future<void> showNoSharerAvailable() async {
+    if (!_initialized) await init();
+
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'no_sharer',
+      'No Sharer Available',
+      channelDescription: 'Notifications when no device is available to share',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    );
+
+    const DarwinNotificationDetails macosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      presentBanner: true,
+      presentList: true,
+      interruptionLevel: InterruptionLevel.timeSensitive,
+      categoryIdentifier: 'CLIPBOARD_CATEGORY',
+    );
+
+    const NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: macosDetails,
+      macOS: macosDetails,
+    );
+
+    // Add a small delay to ensure proper delivery
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    await _notifications.show(
+      5,
+      '📱 No Device Available',
+      'No other device is ready to share right now.',
+      details,
+      payload: 'no_sharer_available',
+    );
+
+    debugPrint('📱 No sharer available notification sent with timeSensitive level');
+  }
+
+  /// Test notification to verify macOS banner settings
+  static Future<void> showTestNotification() async {
+    if (!_initialized) await init();
+
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'test_notification',
+      'Test Notification',
+      channelDescription: 'Test notification for macOS banner verification',
+      importance: Importance.max,
+      priority: Priority.max,
+      icon: '@mipmap/ic_launcher',
+    );
+
+    const DarwinNotificationDetails macosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      presentBanner: true,
+      presentList: true,
+      interruptionLevel: InterruptionLevel.critical,
+      categoryIdentifier: 'TEST_CATEGORY',
+    );
+
+    const NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: macosDetails,
+      macOS: macosDetails,
+    );
+
+    await _notifications.show(
+      999,
+      '🧪 TEST: Banner Check',
+      'If you see this as a floating banner, macOS settings are correct!',
+      details,
+      payload: 'test_notification',
+    );
+
+    debugPrint('🧪 Test notification sent with CRITICAL level');
+  }
+
   /// Clear all notifications
-  static Future<void> clearAll() async {
+  static Future<void> clearAllNotifications() async {
+    if (!_initialized) await init();
     await _notifications.cancelAll();
     debugPrint('🧹 All notifications cleared');
   }
