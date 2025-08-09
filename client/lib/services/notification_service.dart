@@ -1,7 +1,9 @@
-import 'dart:async';
+import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:windows_toast/windows_toast.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
@@ -78,86 +80,114 @@ class NotificationService {
     debugPrint('📱 Notification tapped: ${response.payload}');
   }
 
+  /// Show Windows-specific toast notification
+  static Future<void> _showWindowsToast(String title, String message, BuildContext? context) async {
+    if (Platform.isWindows && context != null) {
+      try {
+        WindowsToast.show(
+          '$title\n$message',
+          context,
+          5, // Duration in seconds
+        );
+        debugPrint('🪟 Windows toast notification sent: $title');
+      } catch (e) {
+        debugPrint('❌ Windows toast error: $e');
+      }
+    }
+  }
+
   /// Show notification when clipboard is shared
-  static Future<void> showClipboardShared({String? deviceName}) async {
+  static Future<void> showClipboardShared({String? deviceName, BuildContext? context}) async {
     if (!_initialized) await init();
-
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'clipboard_shared',
-      'Clipboard Shared',
-      channelDescription: 'Notifications when clipboard is shared',
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-    );
-
-    const DarwinNotificationDetails macosDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: false,
-      presentSound: true,
-      presentBanner: true,
-      interruptionLevel: InterruptionLevel.active,
-    );
-
-    const NotificationDetails details = NotificationDetails(
-      android: androidDetails,
-      iOS: macosDetails,
-      macOS: macosDetails,
-    );
 
     final String message = deviceName != null 
         ? 'Clipboard shared to $deviceName'
         : 'Clipboard shared successfully';
 
-    await _notifications.show(
-      1,
-      '📋 Clipboard Shared',
-      message,
-      details,
-      payload: 'clipboard_shared',
-    );
+    // Show Windows toast notification if on Windows
+    if (Platform.isWindows) {
+      await _showWindowsToast('📋 Clipboard Shared', message, context);
+    } else {
+      // Show cross-platform notification for other platforms
+      const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        'clipboard_shared',
+        'Clipboard Shared',
+        channelDescription: 'Notifications when clipboard is shared',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+      );
+
+      const DarwinNotificationDetails macosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: false,
+        presentSound: true,
+        presentBanner: true,
+        interruptionLevel: InterruptionLevel.active,
+      );
+
+      const NotificationDetails details = NotificationDetails(
+        android: androidDetails,
+        iOS: macosDetails,
+        macOS: macosDetails,
+      );
+
+      await _notifications.show(
+        1,
+        '📋 Clipboard Shared',
+        message,
+        details,
+        payload: 'clipboard_shared',
+      );
+    }
 
     debugPrint('📤 Notification sent: Clipboard shared');
   }
 
   /// Show notification when clipboard is retrieved
-  static Future<void> showClipboardRetrieved({String? fromDevice}) async {
+  static Future<void> showClipboardRetrieved({String? fromDevice, BuildContext? context}) async {
     if (!_initialized) await init();
-
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'clipboard_retrieved',
-      'Clipboard Retrieved',
-      channelDescription: 'Notifications when clipboard is retrieved',
-      importance: Importance.defaultImportance,
-      priority: Priority.defaultPriority,
-      icon: '@mipmap/ic_launcher',
-    );
-
-    const DarwinNotificationDetails macosDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: false,
-      presentSound: true,
-      presentBanner: true,
-      interruptionLevel: InterruptionLevel.active,
-    );
-
-    const NotificationDetails details = NotificationDetails(
-      android: androidDetails,
-      iOS: macosDetails,
-      macOS: macosDetails,
-    );
 
     final String message = fromDevice != null 
         ? 'Clipboard retrieved from $fromDevice'
         : 'Clipboard retrieved successfully';
 
-    await _notifications.show(
-      2,
-      '📥 Clipboard Retrieved',
-      message,
-      details,
-      payload: 'clipboard_retrieved',
-    );
+    // Show Windows toast notification if on Windows
+    if (Platform.isWindows) {
+      await _showWindowsToast('📥 Clipboard Retrieved', message, context);
+    } else {
+      // Show cross-platform notification for other platforms
+      const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        'clipboard_retrieved',
+        'Clipboard Retrieved',
+        channelDescription: 'Notifications when clipboard is retrieved',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        icon: '@mipmap/ic_launcher',
+      );
+
+      const DarwinNotificationDetails macosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: false,
+        presentSound: true,
+        presentBanner: true,
+        interruptionLevel: InterruptionLevel.active,
+      );
+
+      const NotificationDetails details = NotificationDetails(
+        android: androidDetails,
+        iOS: macosDetails,
+        macOS: macosDetails,
+      );
+
+      await _notifications.show(
+        2,
+        '📥 Clipboard Retrieved',
+        message,
+        details,
+        payload: 'clipboard_retrieved',
+      );
+    }
 
     debugPrint('📥 Notification sent: Clipboard retrieved');
   }
@@ -256,7 +286,7 @@ class NotificationService {
   }
 
   /// Show notification when download is completed
-  static Future<void> showDownloadCompleted(String fileId, String fileName) async {
+  static Future<void> showDownloadCompleted(String fileId, String fileName, {BuildContext? context}) async {
     if (!_initialized) await init();
 
     // Stop tracking this download
@@ -268,45 +298,50 @@ class NotificationService {
       _progressTimer = null;
     }
 
-    // Cancel the progress notification for this file
-    await _notifications.cancel(fileId.hashCode);
+    final String message = '$fileName downloaded successfully';
 
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'file_download_completed',
-      'File Download Completed',
-      channelDescription: 'Notifications when file downloads complete',
-      importance: Importance.defaultImportance,
-      priority: Priority.defaultPriority,
-      icon: '@mipmap/ic_launcher',
-    );
+    // Show Windows toast notification if on Windows
+    if (Platform.isWindows) {
+      await _showWindowsToast('✅ Download Complete', message, context);
+    } else {
+      // Show cross-platform notification for other platforms
+      const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        'download_complete',
+        'Download Complete',
+        channelDescription: 'Notifications when file download completes',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        icon: '@mipmap/ic_launcher',
+      );
 
-    const DarwinNotificationDetails macosDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: false,
-      presentSound: true,
-      presentBanner: true,
-      interruptionLevel: InterruptionLevel.active,
-    );
+      const DarwinNotificationDetails macosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: false,
+        presentSound: true,
+        presentBanner: true,
+        interruptionLevel: InterruptionLevel.active,
+      );
 
-    const NotificationDetails details = NotificationDetails(
-      android: androidDetails,
-      iOS: macosDetails,
-      macOS: macosDetails,
-    );
+      const NotificationDetails details = NotificationDetails(
+        android: androidDetails,
+        iOS: macosDetails,
+        macOS: macosDetails,
+      );
 
-    await _notifications.show(
-      3,
-      '✅ Download Complete',
-      '$fileName downloaded successfully',
-      details,
-      payload: 'download_completed:$fileId',
-    );
+      await _notifications.show(
+        4,
+        '✅ Download Complete',
+        message,
+        details,
+        payload: 'download_complete:$fileName',
+      );
+    }
 
     debugPrint('✅ Download completion notification sent: $fileName');
   }
 
   /// Show notification when download fails
-  static Future<void> showDownloadFailed(String fileId, String fileName, {String? error}) async {
+  static Future<void> showDownloadFailed(String fileId, String fileName, {String? error, BuildContext? context}) async {
     if (!_initialized) await init();
 
     // Stop tracking this download
@@ -318,88 +353,99 @@ class NotificationService {
       _progressTimer = null;
     }
 
-    // Cancel the progress notification for this file
-    await _notifications.cancel(fileId.hashCode);
-
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'file_download_failed',
-      'File Download Failed',
-      channelDescription: 'Notifications when file downloads fail',
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-    );
-
-    const DarwinNotificationDetails macosDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: false,
-      presentSound: true,
-      presentBanner: true,
-      interruptionLevel: InterruptionLevel.active,
-    );
-
-    const NotificationDetails details = NotificationDetails(
-      android: androidDetails,
-      iOS: macosDetails,
-      macOS: macosDetails,
-    );
-
     final String message = error != null 
         ? '$fileName download failed: $error'
         : '$fileName download failed';
 
-    await _notifications.show(
-      4,
-      '❌ Download Failed',
-      message,
-      details,
-      payload: 'download_failed:$fileId',
-    );
+    // Show Windows toast notification if on Windows
+    if (Platform.isWindows) {
+      await _showWindowsToast('❌ Download Failed', message, context);
+    } else {
+      // Show cross-platform notification for other platforms
+      const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        'download_failed',
+        'Download Failed',
+        channelDescription: 'Notifications when file download fails',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        icon: '@mipmap/ic_launcher',
+      );
+
+      const DarwinNotificationDetails macosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: false,
+        presentSound: true,
+        presentBanner: true,
+        interruptionLevel: InterruptionLevel.active,
+      );
+
+      const NotificationDetails details = NotificationDetails(
+        android: androidDetails,
+        iOS: macosDetails,
+        macOS: macosDetails,
+      );
+
+      await _notifications.show(
+        4,
+        '❌ Download Failed',
+        message,
+        details,
+        payload: 'download_failed:$fileId',
+      );
+    }
 
     debugPrint('❌ Download failure notification sent: $fileName');
   }
 
   /// Show notification when no sharer is available
-  static Future<void> showNoSharerAvailable() async {
+  static Future<void> showNoSharerAvailable({BuildContext? context}) async {
     if (!_initialized) await init();
 
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'no_sharer',
-      'No Sharer Available',
-      channelDescription: 'Notifications when no device is available to share',
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-    );
+    const String message = 'No other device is ready to share right now.';
 
-    const DarwinNotificationDetails macosDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-      presentBanner: true,
-      presentList: true,
-      interruptionLevel: InterruptionLevel.timeSensitive,
-      categoryIdentifier: 'CLIPBOARD_CATEGORY',
-    );
+    // Show Windows toast notification if on Windows
+    if (Platform.isWindows) {
+      await _showWindowsToast('📱 No Device Available', message, context);
+    } else {
+      // Show cross-platform notification for other platforms
+      const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        'no_sharer',
+        'No Sharer Available',
+        channelDescription: 'Notifications when no device is available to share',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+      );
 
-    const NotificationDetails details = NotificationDetails(
-      android: androidDetails,
-      iOS: macosDetails,
-      macOS: macosDetails,
-    );
+      const DarwinNotificationDetails macosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        presentBanner: true,
+        presentList: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+        categoryIdentifier: 'CLIPBOARD_CATEGORY',
+      );
 
-    // Add a small delay to ensure proper delivery
-    await Future.delayed(const Duration(milliseconds: 100));
+      const NotificationDetails details = NotificationDetails(
+        android: androidDetails,
+        iOS: macosDetails,
+        macOS: macosDetails,
+      );
 
-    await _notifications.show(
-      5,
-      '📱 No Device Available',
-      'No other device is ready to share right now.',
-      details,
-      payload: 'no_sharer_available',
-    );
+      // Add a small delay to ensure proper delivery
+      await Future.delayed(const Duration(milliseconds: 100));
 
-    debugPrint('📱 No sharer available notification sent with timeSensitive level');
+      await _notifications.show(
+        5,
+        '📱 No Device Available',
+        message,
+        details,
+        payload: 'no_sharer_available',
+      );
+    }
+
+    debugPrint('📱 No sharer available notification sent');
   }
 
   /// Test notification to verify macOS banner settings
