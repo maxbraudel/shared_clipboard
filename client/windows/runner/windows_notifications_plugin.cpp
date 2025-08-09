@@ -3,6 +3,8 @@
 #include <flutter/method_channel.h>
 #include <flutter/plugin_registrar_windows.h>
 #include <flutter/standard_method_codec.h>
+#include <flutter/binary_messenger.h>
+#include <flutter/flutter_engine.h>
 
 #include <memory>
 #include <sstream>
@@ -14,21 +16,20 @@
 // #include <winrt/Windows.UI.Notifications.h>
 // #include <winrt/Windows.Data.Xml.Dom.h>
 
-// Global plugin instance and channel to avoid Flutter framework dependencies
+// Global plugin instance - completely standalone approach
 static std::unique_ptr<WindowsNotificationsPlugin> g_plugin_instance;
-static std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> g_method_channel;
 
 // static
 void WindowsNotificationsPlugin::RegisterWithRegistrar(
     flutter::PluginRegistrarWindows* registrar) {
-  g_method_channel =
+  auto channel =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           registrar->messenger(), "windows_notifications",
           &flutter::StandardMethodCodec::GetInstance());
 
   g_plugin_instance = std::make_unique<WindowsNotificationsPlugin>();
 
-  g_method_channel->SetMethodCallHandler(
+  channel->SetMethodCallHandler(
       [](const auto& call, auto result) {
         if (g_plugin_instance) {
           g_plugin_instance->HandleMethodCall(call, std::move(result));
@@ -37,7 +38,8 @@ void WindowsNotificationsPlugin::RegisterWithRegistrar(
         }
       });
 
-  // No need to call AddPlugin - the method channel is registered directly
+  // Keep channel alive by storing it statically
+  static auto stored_channel = std::move(channel);
 }
 
 WindowsNotificationsPlugin::WindowsNotificationsPlugin() : initialized_(false) {}
@@ -197,13 +199,28 @@ void WindowsNotificationsPlugin::ShowCompletionToast(const std::string& title,
 // std::wstring WindowsNotificationsPlugin::CreateCompletionToastXml(...)
 // std::wstring WindowsNotificationsPlugin::StringToWString(...)
 
-// Simplified C function for plugin registration - avoids Flutter framework dependencies
+// Completely standalone C function for plugin registration
 extern "C" __declspec(dllexport) void WindowsNotificationsPluginRegisterWithRegistrar(
     FlutterDesktopPluginRegistrarRef registrar) {
-  // Create a simple wrapper to avoid PluginRegistrarManager dependencies
-  auto windows_registrar = std::make_unique<flutter::PluginRegistrarWindows>(registrar);
-  WindowsNotificationsPlugin::RegisterWithRegistrar(windows_registrar.get());
+  // Directly create method channel without using PluginRegistrarWindows wrapper
+  auto messenger = FlutterDesktopPluginRegistrarGetMessenger(registrar);
   
-  // Keep the registrar alive
-  static auto stored_registrar = std::move(windows_registrar);
+  auto channel = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter::BinaryMessenger::ForEngine(FlutterDesktopPluginRegistrarGetEngine(registrar)),
+      "windows_notifications",
+      &flutter::StandardMethodCodec::GetInstance());
+
+  g_plugin_instance = std::make_unique<WindowsNotificationsPlugin>();
+
+  channel->SetMethodCallHandler(
+      [](const auto& call, auto result) {
+        if (g_plugin_instance) {
+          g_plugin_instance->HandleMethodCall(call, std::move(result));
+        } else {
+          result->Error("PLUGIN_ERROR", "Plugin not initialized");
+        }
+      });
+
+  // Keep channel alive by storing it statically
+  static auto stored_channel = std::move(channel);
 }
