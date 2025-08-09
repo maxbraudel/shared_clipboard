@@ -208,13 +208,18 @@ class SocketService {
         return;
       }
       
-      if (data['signal']['type'] == 'offer') {
-        await _webrtcService.handleOffer(data['signal'], data['from']);
-      } else if (data['signal']['type'] == 'answer') {
-        await _webrtcService.handleAnswer(data['signal']);
-      } else if (data['signal']['type'] == 'candidate') {
-        await _webrtcService.handleCandidate(data['signal']);
+      // Forward all signals (offer/answer/ice-candidate) to a single entry point.
+      // This ensures connection pooling via connectionId is respected and avoids
+      // type mismatches. Normalize legacy 'candidate' to 'ice-candidate'.
+      final signal = Map<String, dynamic>.from(data['signal']);
+      if (signal['type'] == 'candidate') {
+        signal['type'] = 'ice-candidate';
       }
+      await _webrtcService.handleSignal(
+        data['from'],
+        signal,
+        requestId: requestId,
+      );
     });
 
     // CRITICAL DEBUG: Log every single event to understand the server behavior
