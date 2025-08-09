@@ -923,59 +923,38 @@ class WebRTCService {
   // ===== Streaming file receiver helpers (proto v2) =====
   // Returns true if files were prepared and we're ready to receive.
   // Returns false if the user cancelled any save dialog; in that case, the caller should send a 'cancel' control.
-  Future<bool> _promptDirectoryAndPrepareFiles(String sessionId, List<Map<String, dynamic>> filesMeta) async {
+  Future<bool> _promptDirectoryAndPrepareFiles(
+      String sessionId, List<Map<String, dynamic>> filesMeta) async {
+    final incomingFiles = <_IncomingFile>[];
     try {
       if (filesMeta.isEmpty) {
         _log('⚠️ NO FILES META PROVIDED FOR SESSION', sessionId);
         return false;
       }
 
-      // Prompt for the first file with its suggested name
-      final firstMeta = filesMeta.first;
-      final firstName = (firstMeta['name'] as String?) ?? 'file';
-      String? firstPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save incoming file',
-        fileName: firstName,
-      );
-      if (firstPath == null || firstPath.isEmpty) {
-        _log('🚫 USER CANCELLED SAVE DIALOG (FIRST FILE)');
-        return false;
-      }
-
-      // Derive session directory from first file path
-      final sessionDir = File(firstPath).parent.path;
-      final session = _FileSession(sessionDir);
-
-      // Prepare first file
-      await File(firstPath).parent.create(recursive: true);
-      final firstFile = File(firstPath);
-      final firstSink = firstFile.openWrite();
-      session.files.add(_IncomingFile(
-        name: firstName,
-        size: (firstMeta['size'] as num?)?.toInt() ?? 0,
-        checksum: (firstMeta['checksum'] as String?) ?? '',
-        file: firstFile,
-        sink: firstSink,
-      ));
-
-      // Prompt and prepare remaining files
-      for (int i = 1; i < filesMeta.length; i++) {
-        final meta = filesMeta[i];
-        final name = (meta['name'] as String?) ?? 'file_$i';
+      String? sessionDir;
+      for (final meta in filesMeta) {
+        final name = (meta['name'] as String?) ?? 'file';
         String? savePath = await FilePicker.platform.saveFile(
           dialogTitle: 'Save incoming file',
           fileName: name,
         );
+
         if (savePath == null || savePath.isEmpty) {
-          _log('🚫 USER CANCELLED SAVE DIALOG (ADDITIONAL FILE)');
-          // Abort any partially prepared files in this session
-          await _abortFileSession(sessionId);
+          _log('🚫 USER CANCELLED SAVE DIALOG');
+          // Clean up any files that were already created for this session
+          for (final created in incomingFiles) {
+            await created.sink.close();
+            await created.file.delete();
+          }
           return false;
         }
+
+        sessionDir ??= File(savePath).parent.path;
+        await File(savePath).parent.create(recursive: true);
         final file = File(savePath);
-        await file.parent.create(recursive: true);
         final sink = file.openWrite();
-        session.files.add(_IncomingFile(
+        incomingFiles.add(_IncomingFile(
           name: name,
           size: (meta['size'] as num?)?.toInt() ?? 0,
           checksum: (meta['checksum'] as String?) ?? '',
@@ -984,12 +963,21 @@ class WebRTCService {
         ));
       }
 
+      final session = _FileSession(sessionDir!, incomingFiles);
       _fileSessions[sessionId] = session;
-      _log('📂 FILE SESSION PREPARED', {'sessionId': sessionId, 'dir': session.dirPath, 'files': session.files.length});
+      _log('📂 FILE SESSION PREPARED', {
+        'sessionId': sessionId,
+        'dir': session.dirPath,
+        'files': session.files.length
+      });
       return true;
     } catch (e) {
       _log('❌ ERROR PREPARING FILE SESSION', e.toString());
-      await _abortFileSession(sessionId);
+      // Clean up any files that were created before the error
+      for (final created in incomingFiles) {
+        await created.sink.close();
+        await created.file.delete();
+      }
       return false;
     }
   }
@@ -1142,6 +1130,7 @@ class _IncomingFile {
   final File file;
   final IOSink sink;
   int received = 0;
+  int? lastReportedMB;
   _IncomingFile({
     required this.name,
     required this.size,
