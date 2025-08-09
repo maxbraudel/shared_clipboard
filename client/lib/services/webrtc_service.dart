@@ -646,10 +646,16 @@ class WebRTCService {
   
   /// Create legacy answer
   Future<void> _createLegacyAnswer(String peerId, Map<String, dynamic> offer) async {
-    if (_peerConnection == null) return;
+    if (_peerConnection == null) {
+      await init();
+    }
     
     _peerId = peerId;
     _log('📝 CREATING LEGACY ANSWER FOR PEER', peerId);
+    
+    // CRITICAL: Setup connection handlers BEFORE setting remote description
+    // This ensures the onDataChannel callback is ready to receive incoming data channels
+    _setupLegacyConnectionHandlers();
     
     // Set remote description
     await _peerConnection!.setRemoteDescription(
