@@ -313,7 +313,23 @@ class WebRTCService {
       };
 
       peerState.peerConnection?.onDataChannel = (channel) {
-        _log('📡 DATA CHANNEL RECEIVED', peerId);
+        _log('📡 DATA CHANNEL RECEIVED FROM REMOTE PEER', {
+          'peer': peerId,
+          'label': channel.label,
+          'state': channel.state.toString(),
+          'id': channel.id,
+          'readyState': channel.readyState?.toString()
+        });
+        
+        // Critical fix: Ensure we don't overwrite an existing data channel
+        if (peerState.dataChannel != null) {
+          _log('⚠️ REPLACING EXISTING DATA CHANNEL', {
+            'peer': peerId,
+            'oldState': peerState.dataChannel!.state.toString(),
+            'newState': channel.state.toString()
+          });
+        }
+        
         _setupDataChannel(peerId, channel);
       };
       
@@ -334,6 +350,7 @@ class WebRTCService {
       'peer': peerId,
       'label': channel.label,
       'state': channel.state.toString(),
+      'id': channel.id,
       'hasPendingContent': peerState.pendingClipboardContent != null,
       'role': peerState.pendingClipboardContent != null ? 'SENDER' : 'RECEIVER'
     });
@@ -362,7 +379,11 @@ class WebRTCService {
     peerState.dataChannel?.onMessage = (message) {
       // Support: proto v2 streaming (files), proto v1 chunked JSON payloads, and legacy single payload
       final text = message.text;
-      _log('📥 RECEIVED DATA MESSAGE (RECEIVER ROLE)', '$peerId: ${text.length} bytes');
+      _log('📥 RECEIVED DATA MESSAGE (RECEIVER ROLE)', {
+        'peer': peerId,
+        'messageLength': text.length,
+        'messagePreview': text.length > 100 ? '${text.substring(0, 100)}...' : text
+      });
       try {
         // Handle ACKs for flow control
         if (text == '{"__sc_proto":2,"kind":"ack"}') {
@@ -375,8 +396,23 @@ class WebRTCService {
 
         // Try to parse as protocol envelope
         final isJsonEnvelope = text.startsWith('{') && text.contains('"__sc_proto"');
+        _log('🔍 MESSAGE ANALYSIS', {
+          'peer': peerId,
+          'isJsonEnvelope': isJsonEnvelope,
+          'startsWithBrace': text.startsWith('{'),
+          'containsProto': text.contains('"__sc_proto"')
+        });
+        
         if (isJsonEnvelope) {
           final Map<String, dynamic> env = jsonDecode(text);
+          _log('📋 PARSED PROTOCOL ENVELOPE', {
+            'peer': peerId,
+            'proto': env['__sc_proto'],
+            'kind': env['kind'],
+            'mode': env['mode'],
+            'allKeys': env.keys.toList()
+          });
+          
           // Proto v2: streaming files
           if (env['__sc_proto'] == 2 && env['kind'] == 'files') {
             final mode = env['mode'] as String?;
@@ -384,7 +420,12 @@ class WebRTCService {
             if (mode == 'start' && sessionId != null) {
               // Ask user for directory immediately
               final filesMeta = (env['files'] as List).cast<Map<String, dynamic>>();
-              _log('🔰 START FILE STREAM SESSION', {'peer': peerId, 'sessionId': sessionId, 'files': filesMeta.length});
+              _log('🔰 START FILE STREAM SESSION', {
+                'peer': peerId, 
+                'sessionId': sessionId, 
+                'files': filesMeta.length,
+                'fileDetails': filesMeta.map((f) => '${f['name']} (${f['size']} bytes)').toList()
+              });
               () async {
                 final prepared = await _promptDirectoryAndPrepareFiles(peerId, sessionId, filesMeta);
                 if (!prepared) {
