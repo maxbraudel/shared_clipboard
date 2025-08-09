@@ -18,6 +18,7 @@ class NotificationService {
   static bool _isInitialized = false;
   static final Map<String, _DownloadInfo> _activeDownloads = {};
   static String? _currentDownloadSession;
+  static bool _taskbarSupported = false;
 
   // Helper function for timestamped logging
   static void _log(String message, [dynamic data]) {
@@ -36,11 +37,16 @@ class NotificationService {
     }
 
     try {
-      _isInitialized = true;
+      // Test if Windows taskbar API is available
+      await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
+      _taskbarSupported = true;
       _log('✅ NOTIFICATION SERVICE INITIALIZED (Windows Taskbar Mode)');
     } catch (e) {
-      _log('❌ FAILED TO INITIALIZE NOTIFICATION SERVICE', e.toString());
+      _taskbarSupported = false;
+      _log('⚠️ WINDOWS TASKBAR API NOT AVAILABLE, USING CONSOLE MODE', e.toString());
     }
+    
+    _isInitialized = true;
   }
 
   /// Start a download notification with progress bar
@@ -65,8 +71,15 @@ class NotificationService {
           ? ' (${_formatBytes(totalBytes)})'
           : '';
 
-      // Set taskbar progress to indeterminate initially
-      await WindowsTaskbar.setProgressMode(TaskbarProgressMode.indeterminate);
+      // Set taskbar progress to indeterminate initially (if supported)
+      if (_taskbarSupported) {
+        try {
+          await WindowsTaskbar.setProgressMode(TaskbarProgressMode.indeterminate);
+        } catch (e) {
+          _taskbarSupported = false;
+          _log('⚠️ TASKBAR API FAILED, DISABLING', e.toString());
+        }
+      }
       
       _log('📥 DOWNLOAD STARTED', {
         'fileName': fileName,
@@ -104,10 +117,15 @@ class NotificationService {
           ? '${_formatBytes(receivedBytes)} / ${_formatBytes(totalBytes)}'
           : '${_formatBytes(receivedBytes)} received';
 
-      // Update taskbar progress if this is the current download
-      if (_currentDownloadSession == sessionId && totalBytes > 0) {
-        await WindowsTaskbar.setProgressMode(TaskbarProgressMode.normal);
-        await WindowsTaskbar.setProgress(receivedBytes, totalBytes);
+      // Update taskbar progress if this is the current download (if supported)
+      if (_taskbarSupported && _currentDownloadSession == sessionId && totalBytes > 0) {
+        try {
+          await WindowsTaskbar.setProgressMode(TaskbarProgressMode.normal);
+          await WindowsTaskbar.setProgress(receivedBytes, totalBytes);
+        } catch (e) {
+          _taskbarSupported = false;
+          _log('⚠️ TASKBAR API FAILED, DISABLING', e.toString());
+        }
       }
 
       // Only log and print every 10% to avoid spam
@@ -147,9 +165,16 @@ class NotificationService {
       final duration = DateTime.now().difference(downloadInfo.startTime);
       final durationText = _formatDuration(duration);
 
-      // Clear taskbar progress if this was the current download
+      // Clear taskbar progress if this was the current download (if supported)
+      if (_taskbarSupported && _currentDownloadSession == sessionId) {
+        try {
+          await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
+        } catch (e) {
+          _taskbarSupported = false;
+          _log('⚠️ TASKBAR API FAILED, DISABLING', e.toString());
+        }
+      }
       if (_currentDownloadSession == sessionId) {
-        await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
         _currentDownloadSession = null;
       }
 
@@ -181,9 +206,16 @@ class NotificationService {
     }
 
     try {
-      // Clear taskbar progress if this was the current download
+      // Clear taskbar progress if this was the current download (if supported)
+      if (_taskbarSupported && _currentDownloadSession == sessionId) {
+        try {
+          await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
+        } catch (e) {
+          _taskbarSupported = false;
+          _log('⚠️ TASKBAR API FAILED, DISABLING', e.toString());
+        }
+      }
       if (_currentDownloadSession == sessionId) {
-        await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
         _currentDownloadSession = null;
       }
       
@@ -225,7 +257,14 @@ class NotificationService {
 
     try {
       _activeDownloads.clear();
-      await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
+      if (_taskbarSupported) {
+        try {
+          await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
+        } catch (e) {
+          _taskbarSupported = false;
+          _log('⚠️ TASKBAR API FAILED, DISABLING', e.toString());
+        }
+      }
       _currentDownloadSession = null;
       
       _log('🧹 ALL DOWNLOAD NOTIFICATIONS CLEARED');
