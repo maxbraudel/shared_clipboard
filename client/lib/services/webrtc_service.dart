@@ -644,6 +644,49 @@ class WebRTCService {
     }
   }
   
+  /// Create legacy answer
+  Future<void> _createLegacyAnswer(String peerId, Map<String, dynamic> offer) async {
+    if (_peerConnection == null) return;
+    
+    _peerId = peerId;
+    _log('📝 CREATING LEGACY ANSWER FOR PEER', peerId);
+    
+    // Set remote description
+    await _peerConnection!.setRemoteDescription(
+      RTCSessionDescription(offer['sdp'], offer['type']),
+    );
+    _log('📝 REMOTE DESCRIPTION SET');
+    
+    // Create answer
+    final answer = await _peerConnection!.createAnswer();
+    await _peerConnection!.setLocalDescription(answer);
+    _log('📝 LOCAL DESCRIPTION SET');
+    
+    // Send answer
+    if (onSignalGenerated != null) {
+      onSignalGenerated!(peerId, {
+        'type': 'answer',
+        'sdp': answer.sdp,
+      });
+    }
+    
+    _log('✅ LEGACY ANSWER CREATED AND SENT');
+  }
+  
+  /// Handle offer (legacy)
+  Future<void> handleOffer(dynamic offer, String from) async {
+    await _createLegacyAnswer(from, offer);
+  }
+  
+  /// Handle answer (legacy)
+  Future<void> handleAnswer(dynamic answer) async {
+    if (_peerConnection == null) return;
+    
+    await _peerConnection!.setRemoteDescription(RTCSessionDescription(answer['sdp'], answer['type']));
+    _remoteDescriptionSet = true;
+    await _processQueuedCandidates();
+  }
+  
   /// Handle ICE candidate (legacy)
   Future<void> handleCandidate(dynamic candidate) async {
     if (_peerConnection == null) return;
