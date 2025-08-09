@@ -9,10 +9,6 @@
 #include <string>
 #include <windows.h>
 
-// Simplified implementation without WinRT for now
-// This will at least compile and allow the app to run
-// We can enhance it later with proper toast notifications
-
 // static
 void WindowsNotificationsPlugin::RegisterWithRegistrar(
     flutter::PluginRegistrarWindows* registrar) {

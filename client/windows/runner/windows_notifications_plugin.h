@@ -6,13 +6,7 @@
 #include <flutter/standard_method_codec.h>
 #include <memory>
 #include <string>
-
-// Windows Toast Notification includes
 #include <windows.h>
-#include <winrt/base.h>
-#include <winrt/Windows.Foundation.h>
-#include <winrt/Windows.Data.Xml.Dom.h>
-#include <winrt/Windows.UI.Notifications.h>
 
 class WindowsNotificationsPlugin {
  public:
@@ -52,25 +46,12 @@ class WindowsNotificationsPlugin {
                           const std::string& subtitle,
                           const std::string& message);
 
-  // Helper to create toast XML
-  std::wstring CreateProgressToastXml(const std::string& title,
-                                     const std::string& subtitle,
-                                     int progress,
-                                     const std::string& status,
-                                     const std::string& progressLabel);
-
-  std::wstring CreateCompletionToastXml(const std::string& title,
-                                       const std::string& subtitle,
-                                       const std::string& message);
-
-  // Convert string to wstring
-  std::wstring StringToWString(const std::string& str);
-
-  // Toast notifier and current notification
-  winrt::Windows::UI::Notifications::ToastNotifier toast_notifier_{nullptr};
-  winrt::Windows::UI::Notifications::ToastNotification current_notification_{nullptr};
-  std::string current_tag_;
+  // Simplified state tracking
   bool initialized_ = false;
 };
+
+// External C function for plugin registration
+extern "C" __declspec(dllexport) void WindowsNotificationsPluginRegisterWithRegistrar(
+    FlutterDesktopPluginRegistrarRef registrar);
 
 #endif  // WINDOWS_NOTIFICATIONS_PLUGIN_H_
