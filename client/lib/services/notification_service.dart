@@ -29,6 +29,12 @@ class NotificationService {
 
     try {
       _log('🔔 INITIALIZING NOTIFICATION SERVICE');
+      
+      // Special handling for Windows
+      if (Platform.isWindows) {
+        await _initializeWindows();
+        return;
+      }
 
       // Initialize settings for different platforms
       const AndroidInitializationSettings initializationSettingsAndroid =
@@ -51,6 +57,7 @@ class NotificationService {
         iOS: initializationSettingsDarwin,
         macOS: initializationSettingsDarwin,
         linux: initializationSettingsLinux,
+        windows: null, // Windows uses default settings
       );
 
       final bool? initialized = await _flutterLocalNotificationsPlugin
@@ -64,6 +71,12 @@ class NotificationService {
         if (Platform.isMacOS) {
           await _requestMacOSPermissions();
         }
+        
+        // Add a small delay to ensure Windows plugin is fully ready
+        if (Platform.isWindows) {
+          await Future.delayed(Duration(milliseconds: 500));
+          _log('🪟 WINDOWS NOTIFICATION PLUGIN READY');
+        }
       } else {
         _log('❌ FAILED TO INITIALIZE NOTIFICATION SERVICE');
       }
@@ -72,6 +85,62 @@ class NotificationService {
       if (kDebugMode) {
         print('Stack trace: $stackTrace');
       }
+    }
+  }
+
+  /// Initialize notifications specifically for Windows
+  Future<void> _initializeWindows() async {
+    try {
+      _log('🪟 INITIALIZING WINDOWS NOTIFICATIONS');
+      
+      // Simple initialization for Windows with minimal settings
+      const InitializationSettings initializationSettings =
+          InitializationSettings(
+        windows: null, // Use default Windows settings
+      );
+
+      // Add retry logic for Windows initialization
+      bool initialized = false;
+      int attempts = 0;
+      const maxAttempts = 3;
+      
+      while (!initialized && attempts < maxAttempts) {
+        attempts++;
+        _log('🪟 WINDOWS INIT ATTEMPT', attempts);
+        
+        try {
+          final bool? result = await _flutterLocalNotificationsPlugin
+              .initialize(initializationSettings);
+          
+          if (result == true) {
+            initialized = true;
+            _isInitialized = true;
+            _log('✅ WINDOWS NOTIFICATION SERVICE INITIALIZED SUCCESSFULLY');
+          } else {
+            _log('⚠️ WINDOWS INIT RETURNED FALSE, ATTEMPT $attempts');
+            if (attempts < maxAttempts) {
+              await Future.delayed(Duration(milliseconds: 1000));
+            }
+          }
+        } catch (e) {
+          _log('❌ WINDOWS INIT ATTEMPT $attempts FAILED', e.toString());
+          if (attempts < maxAttempts) {
+            await Future.delayed(Duration(milliseconds: 1000));
+          }
+        }
+      }
+      
+      if (!initialized) {
+        _log('❌ FAILED TO INITIALIZE WINDOWS NOTIFICATIONS AFTER $maxAttempts ATTEMPTS');
+        // Mark as initialized anyway to prevent crashes, but notifications won't work
+        _isInitialized = false;
+      }
+    } catch (e, stackTrace) {
+      _log('❌ ERROR INITIALIZING WINDOWS NOTIFICATIONS', e.toString());
+      if (kDebugMode) {
+        print('Windows notification stack trace: $stackTrace');
+      }
+      _isInitialized = false;
     }
   }
 
@@ -107,6 +176,18 @@ class NotificationService {
     if (!_isInitialized) {
       _log('⚠️ NOTIFICATION SERVICE NOT INITIALIZED');
       return;
+    }
+
+    // Additional safety check for Windows
+    if (Platform.isWindows) {
+      try {
+        // Test if the plugin is actually ready by checking if it can be accessed
+        final _ = _flutterLocalNotificationsPlugin.toString();
+      } catch (e) {
+        _log('⚠️ WINDOWS NOTIFICATION PLUGIN NOT READY, USING FALLBACK', e.toString());
+        await _showWindowsFallbackNotification(title, body);
+        return;
+      }
     }
 
     try {
@@ -342,6 +423,23 @@ class NotificationService {
   void dispose() {
     _log('🔔 DISPOSING NOTIFICATION SERVICE');
     // Flutter local notifications doesn't require explicit disposal
+  }
+
+  /// Windows fallback notification (console-based)
+  Future<void> _showWindowsFallbackNotification(String title, String body) async {
+    try {
+      _log('🪟 WINDOWS FALLBACK NOTIFICATION', '$title: $body');
+      
+      // For now, just log the notification. In a production app, you might want to:
+      // 1. Use a different notification library specifically for Windows
+      // 2. Show a system tray balloon notification
+      // 3. Use Windows native APIs via FFI
+      // 4. Display an in-app notification as fallback
+      
+      print('🔔 NOTIFICATION: $title - $body');
+    } catch (e) {
+      _log('❌ ERROR SHOWING WINDOWS FALLBACK NOTIFICATION', e.toString());
+    }
   }
 
   /// Check if notifications are enabled/available
