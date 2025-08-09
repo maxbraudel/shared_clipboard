@@ -129,9 +129,6 @@ class WebRTCService {
               'bytesRemaining': bytes.length - offset,
               'bufferedAmount': _dataChannel!.bufferedAmount
             });
-            
-            // Show upload progress notification at round values
-            _notificationService.showFileUploadProgress(progressInt, f.name);
           }
         } catch (e) {
           _log('❌ ERROR SENDING CHUNK', {
@@ -181,9 +178,6 @@ class WebRTCService {
         'totalBytes': bytes.length,
         'finalBufferedAmount': _dataChannel!.bufferedAmount
       });
-      
-      // Show upload completion notification
-      _notificationService.showFileUploadComplete(f.name, _peerId ?? 'Unknown Device');
       
       // End of this file
       final fileEnd = jsonEncode({
@@ -985,6 +979,14 @@ class WebRTCService {
         'dir': session.dirPath,
         'files': session.files.length
       });
+      
+      // Show 0% download notification for each file at the start
+      final now = DateTime.now();
+      for (final fileInfo in incomingFiles) {
+        _notificationService.showFileDownloadProgress(0, fileInfo.name);
+        // Initialize the last notification time to allow proper throttling for subsequent notifications
+        fileInfo.lastNotificationTime = now;
+      }
       return true;
     } catch (e) {
       _log('❌ ERROR PREPARING FILE SESSION', e.toString());
@@ -1018,8 +1020,15 @@ class WebRTCService {
         _log('⬇️ PROGRESS', {'file': incoming.name, 'received': incoming.received, 'of': incoming.size});
         incoming.lastReportedMB = receivedMB.toInt();
         
-        // Show download progress notification at round values
-        _notificationService.showFileDownloadProgress(progressInt, incoming.name);
+        // Show download progress notification with throttling (minimum 10s apart)
+        final now = DateTime.now();
+        final shouldShowNotification = incoming.lastNotificationTime == null || 
+            now.difference(incoming.lastNotificationTime!).inSeconds >= 10;
+        
+        if (shouldShowNotification) {
+          _notificationService.showFileDownloadProgress(progressInt, incoming.name);
+          incoming.lastNotificationTime = now;
+        }
       }
 
       // Send ACK for flow control
@@ -1155,6 +1164,7 @@ class _IncomingFile {
   final IOSink sink;
   int received = 0;
   int? lastReportedMB;
+  DateTime? lastNotificationTime;
   _IncomingFile({
     required this.name,
     required this.size,
