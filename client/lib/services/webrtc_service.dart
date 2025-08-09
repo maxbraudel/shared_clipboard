@@ -1024,8 +1024,9 @@ class WebRTCService {
             now.difference(incoming.lastNotificationTime!).inSeconds >= 10;
         
         if (shouldShowNotification) {
-          // Check if this percentage should actually be shown (0%, 10%, 20%, etc.)
-          if (progressInt % 10 == 0 && progressInt < 100) {
+          // Check if this percentage should actually be shown (10%, 20%, 30%... 90%)
+          // Exclude 0% since it's already shown at download start
+          if (progressInt % 10 == 0 && progressInt > 0 && progressInt < 100) {
             _notificationService.showFileDownloadProgress(progressInt, incoming.name);
             // Only update the timer when we actually display a notification
             incoming.lastNotificationTime = now;
