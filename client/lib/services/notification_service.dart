@@ -57,7 +57,6 @@ class NotificationService {
         iOS: initializationSettingsDarwin,
         macOS: initializationSettingsDarwin,
         linux: initializationSettingsLinux,
-        windows: null, // Windows uses default settings
       );
 
       final bool? initialized = await _flutterLocalNotificationsPlugin
@@ -95,9 +94,7 @@ class NotificationService {
       
       // Simple initialization for Windows with minimal settings
       const InitializationSettings initializationSettings =
-          InitializationSettings(
-        windows: null, // Use default Windows settings
-      );
+          InitializationSettings();
 
       // Add retry logic for Windows initialization
       bool initialized = false;
