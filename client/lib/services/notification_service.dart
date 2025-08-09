@@ -30,9 +30,10 @@ class NotificationService {
     try {
       _log('🔔 INITIALIZING NOTIFICATION SERVICE');
       
-      // Special handling for Windows
+      // Special handling for Windows - skip plugin initialization entirely
       if (Platform.isWindows) {
-        await _initializeWindows();
+        _log('🪟 WINDOWS DETECTED - USING FALLBACK NOTIFICATIONS ONLY');
+        _isInitialized = true; // Mark as initialized to enable fallback notifications
         return;
       }
 
@@ -175,16 +176,11 @@ class NotificationService {
       return;
     }
 
-    // Additional safety check for Windows
+    // Always use fallback for Windows to avoid plugin issues
     if (Platform.isWindows) {
-      try {
-        // Test if the plugin is actually ready by checking if it can be accessed
-        final _ = _flutterLocalNotificationsPlugin.toString();
-      } catch (e) {
-        _log('⚠️ WINDOWS NOTIFICATION PLUGIN NOT READY, USING FALLBACK', e.toString());
-        await _showWindowsFallbackNotification(title, body);
-        return;
-      }
+      _log('🪟 USING WINDOWS FALLBACK NOTIFICATION');
+      await _showWindowsFallbackNotification(title, body);
+      return;
     }
 
     try {
@@ -427,13 +423,20 @@ class NotificationService {
     try {
       _log('🪟 WINDOWS FALLBACK NOTIFICATION', '$title: $body');
       
-      // For now, just log the notification. In a production app, you might want to:
+      // Enhanced console notification for Windows
+      print('');
+      print('═══════════════════════════════════════════════════════════');
+      print('🔔 NOTIFICATION: $title');
+      print('   $body');
+      print('   Time: ${DateTime.now().toString().substring(11, 19)}');
+      print('═══════════════════════════════════════════════════════════');
+      print('');
+      
+      // For production, consider:
       // 1. Use a different notification library specifically for Windows
       // 2. Show a system tray balloon notification
       // 3. Use Windows native APIs via FFI
       // 4. Display an in-app notification as fallback
-      
-      print('🔔 NOTIFICATION: $title - $body');
     } catch (e) {
       _log('❌ ERROR SHOWING WINDOWS FALLBACK NOTIFICATION', e.toString());
     }
