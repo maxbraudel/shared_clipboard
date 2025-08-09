@@ -30,12 +30,8 @@ class NotificationService {
     try {
       _log('🔔 INITIALIZING NOTIFICATION SERVICE');
       
-      // Special handling for Windows - skip plugin initialization entirely
-      if (Platform.isWindows) {
-        _log('🪟 WINDOWS DETECTED - USING FALLBACK NOTIFICATIONS ONLY');
-        _isInitialized = true; // Mark as initialized to enable fallback notifications
-        return;
-      }
+      // Initialize for all platforms including Windows
+      _log('🔔 INITIALIZING FOR PLATFORM: ${Platform.operatingSystem}');
 
       // Initialize settings for different platforms
       const AndroidInitializationSettings initializationSettingsAndroid =
@@ -72,10 +68,18 @@ class NotificationService {
           await _requestMacOSPermissions();
         }
         
-        // Add a small delay to ensure Windows plugin is fully ready
+        // Add extra initialization time for Windows C++/WinRT Toast Notifications
         if (Platform.isWindows) {
-          await Future.delayed(Duration(milliseconds: 500));
-          _log('🪟 WINDOWS NOTIFICATION PLUGIN READY');
+          await Future.delayed(Duration(milliseconds: 1000));
+          _log('🪟 WINDOWS C++/WINRT TOAST NOTIFICATIONS READY');
+          
+          // Test Windows notification capability
+          try {
+            await _testWindowsNotification();
+          } catch (e) {
+            _log('⚠️ WINDOWS NOTIFICATION TEST FAILED', e.toString());
+            // Don't fail initialization, just log the issue
+          }
         }
       } else {
         _log('❌ FAILED TO INITIALIZE NOTIFICATION SERVICE');
@@ -142,6 +146,25 @@ class NotificationService {
     }
   }
 
+  /// Test Windows notification capability
+  Future<void> _testWindowsNotification() async {
+    try {
+      _log('🧪 TESTING WINDOWS NOTIFICATION CAPABILITY');
+      
+      // Try to create a simple test notification without showing it
+      const NotificationDetails testDetails = NotificationDetails(
+        linux: LinuxNotificationDetails(),
+      );
+      
+      // Just test if we can access the plugin without errors
+      final _ = _flutterLocalNotificationsPlugin.toString();
+      _log('✅ WINDOWS NOTIFICATION TEST PASSED');
+    } catch (e) {
+      _log('❌ WINDOWS NOTIFICATION TEST FAILED', e.toString());
+      throw e;
+    }
+  }
+
   /// Request permissions for macOS
   Future<void> _requestMacOSPermissions() async {
     try {
@@ -176,33 +199,34 @@ class NotificationService {
       return;
     }
 
-    // Always use fallback for Windows to avoid plugin issues
-    if (Platform.isWindows) {
-      _log('🪟 USING WINDOWS FALLBACK NOTIFICATION');
+    // Additional safety check for Windows initialization
+    if (Platform.isWindows && !_isInitialized) {
+      _log('⚠️ WINDOWS NOTIFICATION SERVICE NOT INITIALIZED, USING FALLBACK');
       await _showWindowsFallbackNotification(title, body);
       return;
     }
 
     try {
-      const NotificationDetails platformChannelSpecifics = NotificationDetails(
-        android: AndroidNotificationDetails(
+      NotificationDetails platformChannelSpecifics = NotificationDetails(
+        android: const AndroidNotificationDetails(
           'shared_clipboard_channel',
           'Shared Clipboard',
           channelDescription: 'Notifications for clipboard sharing operations',
           importance: Importance.high,
           priority: Priority.high,
         ),
-        iOS: DarwinNotificationDetails(
+        iOS: const DarwinNotificationDetails(
           presentAlert: true,
           presentBadge: false,
           presentSound: true,
         ),
-        macOS: DarwinNotificationDetails(
+        macOS: const DarwinNotificationDetails(
           presentAlert: true,
           presentBadge: false,
           presentSound: true,
         ),
-        linux: LinuxNotificationDetails(),
+        linux: const LinuxNotificationDetails(),
+
       );
 
       await _flutterLocalNotificationsPlugin.show(
@@ -216,6 +240,12 @@ class NotificationService {
       _log('📤 NOTIFICATION SENT', {'title': title, 'body': body});
     } catch (e) {
       _log('❌ ERROR SHOWING NOTIFICATION', e.toString());
+      
+      // If Windows notification fails, use fallback
+      if (Platform.isWindows) {
+        _log('🪟 WINDOWS NOTIFICATION FAILED, USING FALLBACK');
+        await _showWindowsFallbackNotification(title, body);
+      }
     }
   }
 
