@@ -441,7 +441,7 @@ class WebRTCService {
   
   /// Setup data channel
   void _setupDataChannel(String connectionId, RTCDataChannel channel, {bool isReceiver = false}) {
-    channel.onDataChannelState = (state) {
+    channel.onDataChannelState = (state) async {
       if (state == RTCDataChannelState.RTCDataChannelOpen) {
         _log('✅ DATA CHANNEL OPENED', connectionId);
         if (!isReceiver) {
