@@ -981,11 +981,9 @@ class WebRTCService {
       });
       
       // Show 0% download notification for each file at the start
-      final now = DateTime.now();
       for (final fileInfo in incomingFiles) {
         _notificationService.showFileDownloadProgress(0, fileInfo.name);
-        // Initialize the last notification time to allow proper throttling for subsequent notifications
-        fileInfo.lastNotificationTime = now;
+        // Don't set lastNotificationTime here - let the first progress notification show immediately
       }
       return true;
     } catch (e) {
@@ -1026,8 +1024,12 @@ class WebRTCService {
             now.difference(incoming.lastNotificationTime!).inSeconds >= 10;
         
         if (shouldShowNotification) {
-          _notificationService.showFileDownloadProgress(progressInt, incoming.name);
-          incoming.lastNotificationTime = now;
+          // Check if this percentage should actually be shown (0%, 10%, 20%, etc.)
+          if (progressInt % 10 == 0 && progressInt < 100) {
+            _notificationService.showFileDownloadProgress(progressInt, incoming.name);
+            // Only update the timer when we actually display a notification
+            incoming.lastNotificationTime = now;
+          }
         }
       }
 

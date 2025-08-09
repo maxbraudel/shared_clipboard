@@ -128,8 +128,8 @@ class NotificationService {
   Future<void> showFileDownloadProgress(int percentage, String fileName) async {
     if (!_isInitialized) await init();
     
-    // Only show at round values (10%, 20%, 30%... 90%)
-    if (percentage % 10 != 0 || percentage == 0 || percentage >= 100) return;
+    // Only show at round values (0%, 10%, 20%, 30%... 90%)
+    if (percentage % 10 != 0 || percentage >= 100) return;
     
     final title = "Downloading File";
     final message = "$fileName - $percentage% complete";
