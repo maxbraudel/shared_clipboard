@@ -317,8 +317,7 @@ class WebRTCService {
           'peer': peerId,
           'label': channel.label,
           'state': channel.state.toString(),
-          'id': channel.id,
-          'readyState': channel.readyState?.toString()
+          'id': channel.id
         });
         
         // Critical fix: Ensure we don't overwrite an existing data channel
