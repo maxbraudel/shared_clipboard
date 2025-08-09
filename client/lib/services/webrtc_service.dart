@@ -103,6 +103,8 @@ class WebRTCService {
   void _setupLegacyConnectionHandlers() {
     if (_peerConnection == null) return;
     
+    _log('🔧 SETTING UP LEGACY CONNECTION HANDLERS');
+    
     _peerConnection!.onIceCandidate = (candidate) {
       if (onSignalGenerated != null && candidate.candidate != null && _peerId != null) {
         onSignalGenerated!(_peerId!, {
@@ -118,6 +120,14 @@ class WebRTCService {
       _log('📡 DATA CHANNEL RECEIVED', channel.label);
       _dataChannel = channel;
       _setupLegacyDataChannel();
+    };
+    
+    _peerConnection!.onConnectionState = (state) {
+      _log('🔗 CONNECTION STATE CHANGED', state.toString());
+    };
+    
+    _peerConnection!.onIceConnectionState = (state) {
+      _log('🧊 ICE CONNECTION STATE CHANGED', state.toString());
     };
   }
   
@@ -400,8 +410,10 @@ class WebRTCService {
     }
     
     // Create data channel
-    _dataChannel = await _peerConnection!.createDataChannel('clipboard', RTCDataChannelInit());
-    _log('📡 DATA CHANNEL CREATED', _dataChannel!.state.toString());
+    final dataChannelInit = RTCDataChannelInit();
+    _log('🔨 CREATING DATA CHANNEL WITH CONFIG', dataChannelInit.toString());
+    _dataChannel = await _peerConnection!.createDataChannel('clipboard', dataChannelInit);
+    _log('📡 DATA CHANNEL CREATED', {'state': _dataChannel!.state.toString(), 'label': _dataChannel!.label, 'id': _dataChannel!.id});
     _setupLegacyDataChannel();
     
     // Add a small delay and check again to handle race conditions
@@ -624,41 +636,12 @@ class WebRTCService {
     final signalType = signal['type'];
     
     if (signalType == 'offer') {
-      await handleOffer(signal, peerId);
+      await _createLegacyAnswer(peerId, signal);
     } else if (signalType == 'answer') {
       await handleAnswer(signal);
     } else if (signalType == 'ice-candidate') {
       await handleCandidate(signal);
     }
-  }
-  
-  /// Handle offer (legacy)
-  Future<void> handleOffer(dynamic offer, String from) async {
-    if (!_isInitialized) await init();
-    if (_peerConnection == null) return;
-    
-    _peerId = from;
-    
-    await _peerConnection!.setRemoteDescription(RTCSessionDescription(offer['sdp'], offer['type']));
-    
-    final answer = await _peerConnection!.createAnswer();
-    await _peerConnection!.setLocalDescription(answer);
-    
-    if (onSignalGenerated != null) {
-      onSignalGenerated!(from, {'type': 'answer', 'sdp': answer.sdp});
-    }
-    
-    _remoteDescriptionSet = true;
-    _processQueuedCandidates();
-  }
-  
-  /// Handle answer (legacy)
-  Future<void> handleAnswer(dynamic answer) async {
-    if (_peerConnection == null) return;
-    
-    await _peerConnection!.setRemoteDescription(RTCSessionDescription(answer['sdp'], answer['type']));
-    _remoteDescriptionSet = true;
-    _processQueuedCandidates();
   }
   
   /// Handle ICE candidate (legacy)
