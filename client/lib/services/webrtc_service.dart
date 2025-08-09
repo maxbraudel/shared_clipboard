@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
+import 'package:shared_clipboard/services/notification_service.dart';
 import 'package:file_picker/file_picker.dart';
 
 
@@ -17,6 +18,7 @@ class WebRTCService {
   ClipboardContent? _pendingClipboardContent; // store structured content to allow streaming
   bool _isResetting = false; // Prevent multiple resets
   final FileTransferService _fileTransferService = FileTransferService();
+  final NotificationService _notificationService = NotificationService();
   
   // Queue for ICE candidates received before remote description is set
   final List<RTCIceCandidate> _pendingCandidates = [];
@@ -115,9 +117,10 @@ class WebRTCService {
           _dataChannel!.send(RTCDataChannelMessage(env));
           chunkCount++;
           
-          // Log progress every 100 chunks
+          // Log progress every 100 chunks and show notifications at round percentages
           if (chunkCount % 100 == 0) {
             final progress = (offset / bytes.length * 100).toStringAsFixed(1);
+            final progressInt = (offset / bytes.length * 100).round();
             _log('📤 SENDING PROGRESS', {
               'file': f.name,
               'chunk': chunkCount,
@@ -126,6 +129,9 @@ class WebRTCService {
               'bytesRemaining': bytes.length - offset,
               'bufferedAmount': _dataChannel!.bufferedAmount
             });
+            
+            // Show upload progress notification at round values
+            _notificationService.showFileUploadProgress(progressInt, f.name);
           }
         } catch (e) {
           _log('❌ ERROR SENDING CHUNK', {
@@ -175,6 +181,9 @@ class WebRTCService {
         'totalBytes': bytes.length,
         'finalBufferedAmount': _dataChannel!.bufferedAmount
       });
+      
+      // Show upload completion notification
+      _notificationService.showFileUploadComplete(f.name, _peerId ?? 'Unknown Device');
       
       // End of this file
       final fileEnd = jsonEncode({
@@ -512,10 +521,16 @@ class WebRTCService {
         _log('📁 RECEIVED FILES (JSON PAYLOAD)', '${clipboardContent.files.length} files');
         _fileTransferService.setClipboardContent(clipboardContent);
         _log('✅ FILES HANDLED VIA EXISTING FLOW');
+        
+        // Show clipboard receive success notification for files
+        _notificationService.showClipboardReceiveSuccess(_peerId ?? 'Unknown Device', isFile: true);
       } else {
         _log('📝 RECEIVED TEXT', clipboardContent.text);
         Clipboard.setData(ClipboardData(text: clipboardContent.text));
         _log('📋 TEXT CLIPBOARD UPDATED SUCCESSFULLY');
+        
+        // Show clipboard receive success notification for text
+        _notificationService.showClipboardReceiveSuccess(_peerId ?? 'Unknown Device', isFile: false);
       }
     } catch (e) {
       _log('❌ ERROR PROCESSING RECEIVED DATA', e.toString());
@@ -999,8 +1014,12 @@ class WebRTCService {
       incoming.received += bytes.length;
       final receivedMB = incoming.received / (1024 * 1024);
       if (receivedMB.toInt() > (incoming.lastReportedMB ?? -1)) {
+        final progressInt = (incoming.received / incoming.size * 100).round();
         _log('⬇️ PROGRESS', {'file': incoming.name, 'received': incoming.received, 'of': incoming.size});
         incoming.lastReportedMB = receivedMB.toInt();
+        
+        // Show download progress notification at round values
+        _notificationService.showFileDownloadProgress(progressInt, incoming.name);
       }
 
       // Send ACK for flow control
@@ -1082,6 +1101,11 @@ class WebRTCService {
       }
       await _fileTransferService.setClipboardContent(ClipboardContent.files(filesForClipboard));
       _log('🎉 FILE SESSION FINALIZED', {'sessionId': sessionId, 'files': filesForClipboard.length, 'verified': allOk});
+      
+      // Show download completion notifications for each file
+      for (final f in session.files) {
+        _notificationService.showFileDownloadComplete(f.name, _peerId ?? 'Unknown Device');
+      }
     } catch (e) {
       _log('❌ ERROR FINALIZING FILE SESSION', e.toString());
     }

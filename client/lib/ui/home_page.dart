@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:shared_clipboard/services/socket_service.dart';
 import 'package:shared_clipboard/services/webrtc_service.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
+import 'package:shared_clipboard/services/notification_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -19,6 +20,7 @@ class _HomePageState extends State<HomePage> {
   late SocketService _socketService;
   late WebRTCService _webrtcService;
   late FileTransferService _fileTransferService;
+  final NotificationService _notificationService = NotificationService();
   bool _isInitialized = false;
   bool _isLoadingDevices = true; // Track device discovery loading state
   List<Map<String, dynamic>> _connectedDevices = [];
@@ -267,14 +269,14 @@ class _HomePageState extends State<HomePage> {
     });
     
     try {
-      print('� READING CLIPBOARD FOR SHARING');
+      print('🔎 READING CLIPBOARD FOR SHARING');
       
       // Use file transfer service to detect files or text
       final clipboardContent = await _fileTransferService.getClipboardContent();
       
       if (clipboardContent.isFiles && clipboardContent.files.isNotEmpty) {
         // Files detected in clipboard
-        print('� FILES DETECTED IN CLIPBOARD: ${clipboardContent.files.length} files');
+        print('📁 FILES DETECTED IN CLIPBOARD: ${clipboardContent.files.length} files');
         print('📤 SENDING SHARE-READY TO SERVER (FILES)');
         _socketService.sendShareReady();
         setState(() {
@@ -282,26 +284,40 @@ class _HomePageState extends State<HomePage> {
           _status = 'Ready to share ${clipboardContent.files.length} files: ${_truncateText(fileNames)}';
         });
         print("📋 FILES READY TO SHARE: ${clipboardContent.files.map((f) => f.name).join(', ')}");
+        
+        // Show success notification for files
+        final deviceNames = _connectedDevices.map((d) => d['name'] as String).join(', ');
+        if (deviceNames.isNotEmpty) {
+          _notificationService.showClipboardShareSuccess(deviceNames);
+        }
       } else if (clipboardContent.text.isNotEmpty) {
         // Regular text in clipboard
-        print('� TEXT DETECTED IN CLIPBOARD: "${clipboardContent.text}"');
+        print('📝 TEXT DETECTED IN CLIPBOARD: "${clipboardContent.text}"');
         print('📤 SENDING SHARE-READY TO SERVER (TEXT)');
         _socketService.sendShareReady();
         setState(() {
           _status = 'Ready to share: "${_truncateText(clipboardContent.text)}"';
         });
         print("📋 TEXT READY TO SHARE: ${clipboardContent.text}");
+        
+        // Show success notification for text
+        final deviceNames = _connectedDevices.map((d) => d['name'] as String).join(', ');
+        if (deviceNames.isNotEmpty) {
+          _notificationService.showClipboardShareSuccess(deviceNames);
+        }
       } else {
         setState(() {
           _status = 'No content in clipboard';
         });
         print('❌ NO CONTENT IN CLIPBOARD');
+        _notificationService.showClipboardShareFailure('Clipboard is empty');
       }
     } catch (e) {
       setState(() {
         _status = 'Error reading clipboard: $e';
       });
       print('❌ CLIPBOARD READ ERROR: $e');
+      _notificationService.showClipboardShareFailure(e.toString());
     }
   }
 
@@ -313,16 +329,35 @@ class _HomePageState extends State<HomePage> {
     });
     print("📥 REQUESTING CLIPBOARD FROM SERVER");
     
-    _socketService.sendRequestShare();
-    
-    // Reset status after a delay if no response
-    Future.delayed(const Duration(seconds: 5), () {
-      if (mounted && _status == 'Requesting clipboard...') {
+    try {
+      // Check if we have connected devices
+      if (_connectedDevices.isEmpty) {
+        print('❌ No connected devices to request from');
+        _notificationService.showClipboardReceiveFailure('No connected devices');
         setState(() {
-          _status = 'Ready';
+          _status = 'No connected devices';
         });
+        return;
       }
-    });
+      
+      _socketService.sendRequestShare();
+      print('✅ Clipboard request sent successfully');
+      
+      // Reset status after a delay if no response
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted && _status == 'Requesting clipboard...') {
+          setState(() {
+            _status = 'Ready';
+          });
+        }
+      });
+    } catch (e) {
+      print('❌ Error requesting clipboard: $e');
+      _notificationService.showClipboardReceiveFailure(e.toString());
+      setState(() {
+        _status = 'Error requesting clipboard';
+      });
+    }
   }
 
   Widget _buildConnectedDevicesSection() {
