@@ -151,18 +151,12 @@ class SocketService {
         return;
       }
       
-      final fromPeer = data['from'];
-      if (fromPeer == null) {
-        _log('❌ WEBRTC SIGNAL MISSING FROM PEER ID', data);
-        return;
-      }
-      
       if (data['signal']['type'] == 'offer') {
-        await _webrtcService.handleOffer(data['signal'], fromPeer);
+        await _webrtcService.handleOffer(data['signal'], data['from']);
       } else if (data['signal']['type'] == 'answer') {
-        await _webrtcService.handleAnswer(data['signal'], fromPeer);
+        await _webrtcService.handleAnswer(data['signal']);
       } else if (data['signal']['type'] == 'candidate') {
-        await _webrtcService.handleCandidate(data['signal'], fromPeer);
+        await _webrtcService.handleCandidate(data['signal']);
       }
     });
 
@@ -240,28 +234,6 @@ class SocketService {
       _log('🚀 SHARE AVAILABLE', data);
     });
 
-    // Handle clipboard share requests from other clients
-    socket.on('request-share', (data) {
-      _log('📥 RECEIVED CLIPBOARD REQUEST', data);
-      
-      // Extract requester information
-      final fromDevice = data is Map ? data['from'] : null;
-      if (fromDevice != null && fromDevice != socket.id) {
-        _log('📋 INITIATING CLIPBOARD SHARE TO REQUESTER', fromDevice);
-        
-        // Create WebRTC offer to the requesting client
-        if (_webrtcService != null) {
-          _webrtcService!.createOffer(fromDevice).catchError((e) {
-            _log('❌ ERROR CREATING OFFER FOR REQUEST', '$fromDevice: ${e.toString()}');
-          });
-        } else {
-          _log('❌ WEBRTC SERVICE NOT AVAILABLE FOR REQUEST', fromDevice);
-        }
-      } else {
-        _log('⚠️ INVALID REQUEST-SHARE DATA OR FROM SELF', data);
-      }
-    });
-
     // Handle hello messages from new clients
     socket.on('hello-i-am-here', (data) {
       _log('👋 RECEIVED HELLO FROM NEW CLIENT', data);
@@ -324,11 +296,8 @@ class SocketService {
   }
 
   void sendRequestShare() {
-    _log('📤 SENDING REQUEST-SHARE', {'from': socket.id});
-    socket.emit('request-share', {
-      'from': socket.id,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
+    _log('📤 SENDING REQUEST-SHARE');
+    socket.emit('request-share', {});
   }
 
   void sendSignal(String to, dynamic signal) {

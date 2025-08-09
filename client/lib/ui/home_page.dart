@@ -15,40 +15,6 @@ class HomePage extends StatefulWidget {
   _HomePageState createState() => _HomePageState();
 }
 
-// Transfer status tracking for multi-peer support
-class TransferStatus {
-  final String peerId;
-  final String deviceName;
-  final String operation; // 'sending', 'receiving', 'idle'
-  final String description;
-  final double? progress; // 0.0 to 1.0, null if indeterminate
-  final DateTime timestamp;
-  
-  TransferStatus({
-    required this.peerId,
-    required this.deviceName,
-    required this.operation,
-    required this.description,
-    this.progress,
-    DateTime? timestamp,
-  }) : timestamp = timestamp ?? DateTime.now();
-  
-  TransferStatus copyWith({
-    String? operation,
-    String? description,
-    double? progress,
-  }) {
-    return TransferStatus(
-      peerId: peerId,
-      deviceName: deviceName,
-      operation: operation ?? this.operation,
-      description: description ?? this.description,
-      progress: progress ?? this.progress,
-      timestamp: DateTime.now(),
-    );
-  }
-}
-
 class _HomePageState extends State<HomePage> {
   String _status = 'Initializing...';
   late SocketService _socketService;
@@ -59,9 +25,6 @@ class _HomePageState extends State<HomePage> {
   bool _isLoadingDevices = true; // Track device discovery loading state
   List<Map<String, dynamic>> _connectedDevices = [];
   Timer? _updateTimer;
-  
-  // Multi-peer transfer tracking
-  final Map<String, TransferStatus> _activeTransfers = {};
 
   // Helper function to truncate long text with ellipsis
   String _truncateText(String text, {int maxLength = 200}) {
@@ -138,40 +101,6 @@ class _HomePageState extends State<HomePage> {
       // Initialize WebRTC first
       print('🔧 INITIALIZING WEBRTC SERVICE');
       _webrtcService.init();
-      
-      // Set up WebRTC transfer callbacks for multi-peer UI updates
-      _webrtcService.onTransferStarted = (String peerId, String operation, String description) {
-        final deviceName = _getDeviceName(peerId);
-        _updateTransferStatus(peerId, deviceName, operation, description);
-      };
-      
-      _webrtcService.onTransferProgress = (String peerId, double progress, String description) {
-        final deviceName = _getDeviceName(peerId);
-        final operation = _activeTransfers[peerId]?.operation ?? 'transferring';
-        _updateTransferStatus(peerId, deviceName, operation, description, progress: progress);
-      };
-      
-      _webrtcService.onTransferCompleted = (String peerId, String description) {
-        // Keep the transfer visible for a moment before removing
-        final deviceName = _getDeviceName(peerId);
-        final operation = _activeTransfers[peerId]?.operation ?? 'completed';
-        _updateTransferStatus(peerId, deviceName, operation, description, progress: 1.0);
-        
-        // Remove after a delay to show completion
-        Timer(Duration(seconds: 2), () {
-          _removeTransferStatus(peerId);
-        });
-      };
-      
-      _webrtcService.onTransferError = (String peerId, String error) {
-        final deviceName = _getDeviceName(peerId);
-        _updateTransferStatus(peerId, deviceName, 'error', 'Error: $error');
-        
-        // Remove after a delay to show error
-        Timer(Duration(seconds: 3), () {
-          _removeTransferStatus(peerId);
-        });
-      };
       
       // Then initialize Socket service
       print('🔧 INITIALIZING SOCKET SERVICE');
@@ -301,9 +230,7 @@ class _HomePageState extends State<HomePage> {
                 overflow: TextOverflow.ellipsis,
                 maxLines: 3,
               ),
-              const SizedBox(height: 20),
-              _buildActiveTransfersSection(),
-              const SizedBox(height: 20),
+              const SizedBox(height: 30),
               _buildConnectedDevicesSection(),
               const SizedBox(height: 30),
               ElevatedButton.icon(
@@ -600,167 +527,6 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-  }
-
-  // Build active transfers section for multi-peer support
-  Widget _buildActiveTransfersSection() {
-    if (_activeTransfers.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.sync,
-                color: Colors.orange,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Active Transfers (${_activeTransfers.length})',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[800],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 15),
-          Container(
-            constraints: BoxConstraints(
-              maxHeight: 200,
-              maxWidth: 400,
-            ),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.orange[300]!),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: _activeTransfers.length,
-              itemBuilder: (context, index) {
-                final transfer = _activeTransfers.values.elementAt(index);
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    border: index < _activeTransfers.length - 1
-                        ? Border(bottom: BorderSide(color: Colors.grey[200]!))
-                        : null,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: transfer.operation == 'sending' ? Colors.blue : Colors.green,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${transfer.operation == 'sending' ? 'Sending to' : 'Receiving from'} ${transfer.deviceName}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w500,
-                                fontSize: 14,
-                              ),
-                            ),
-                            Text(
-                              transfer.description,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            if (transfer.progress != null)
-                              Container(
-                                margin: const EdgeInsets.only(top: 4),
-                                child: LinearProgressIndicator(
-                                  value: transfer.progress,
-                                  backgroundColor: Colors.grey[300],
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    transfer.operation == 'sending' ? Colors.blue : Colors.green,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      if (transfer.progress != null)
-                        Text(
-                          '${(transfer.progress! * 100).toInt()}%',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[500],
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Transfer tracking methods for multi-peer support
-  void _updateTransferStatus(String peerId, String deviceName, String operation, String description, {double? progress}) {
-    if (mounted) {
-      setState(() {
-        if (_activeTransfers.containsKey(peerId)) {
-          _activeTransfers[peerId] = _activeTransfers[peerId]!.copyWith(
-            operation: operation,
-            description: description,
-            progress: progress,
-          );
-        } else {
-          _activeTransfers[peerId] = TransferStatus(
-            peerId: peerId,
-            deviceName: deviceName,
-            operation: operation,
-            description: description,
-            progress: progress,
-          );
-        }
-      });
-    }
-  }
-
-  void _removeTransferStatus(String peerId) {
-    if (mounted) {
-      setState(() {
-        _activeTransfers.remove(peerId);
-      });
-    }
-  }
-
-  void _clearAllTransfers() {
-    if (mounted) {
-      setState(() {
-        _activeTransfers.clear();
-      });
-    }
-  }
-
-  String _getDeviceName(String peerId) {
-    final device = _connectedDevices.firstWhere(
-      (device) => device['id'] == peerId,
-      orElse: () => {'name': 'Device $peerId'},
-    );
-    return device['name'] ?? 'Device $peerId';
   }
 }
 
