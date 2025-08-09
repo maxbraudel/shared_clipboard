@@ -4,7 +4,6 @@
 #include <flutter/method_channel.h>
 #include <flutter/plugin_registrar_windows.h>
 #include <flutter/standard_method_codec.h>
-#include <flutter/plugin.h>
 
 #include <memory>
 #include <string>
@@ -13,7 +12,7 @@
 // WinRT forward declarations - temporarily disabled due to build issues
 // #include <winrt/Windows.UI.Notifications.h>
 
-class WindowsNotificationsPlugin : public flutter::Plugin {
+class WindowsNotificationsPlugin {
  public:
   static void RegisterWithRegistrar(flutter::PluginRegistrarWindows* registrar);
 
