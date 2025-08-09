@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
+import 'package:shared_clipboard/services/notification_service.dart';
 import 'package:file_picker/file_picker.dart';
 
 
@@ -17,6 +18,7 @@ class WebRTCService {
   ClipboardContent? _pendingClipboardContent; // store structured content to allow streaming
   bool _isResetting = false; // Prevent multiple resets
   final FileTransferService _fileTransferService = FileTransferService();
+  final NotificationService _notificationService = NotificationService();
   
   // Queue for ICE candidates received before remote description is set
   final List<RTCIceCandidate> _pendingCandidates = [];
@@ -115,9 +117,9 @@ class WebRTCService {
           _dataChannel!.send(RTCDataChannelMessage(env));
           chunkCount++;
           
-          // Log progress every 100 chunks
+          // Log progress every 100 chunks and show notifications at 10% increments
           if (chunkCount % 100 == 0) {
-            final progress = (offset / bytes.length * 100).toStringAsFixed(1);
+            final progress = (offset / bytes.length * 100).round();
             _log('📤 SENDING PROGRESS', {
               'file': f.name,
               'chunk': chunkCount,
@@ -126,6 +128,15 @@ class WebRTCService {
               'bytesRemaining': bytes.length - offset,
               'bufferedAmount': _dataChannel!.bufferedAmount
             });
+            
+            // Show notification for upload progress at 10% increments
+            if (progress > 0 && progress % 10 == 0 && progress < 100) {
+              _notificationService.showFileUploadProgress(
+                progressPercentage: progress,
+                fileName: f.name,
+                deviceName: _peerId,
+              );
+            }
           }
         } catch (e) {
           _log('❌ ERROR SENDING CHUNK', {
@@ -175,6 +186,12 @@ class WebRTCService {
         'totalBytes': bytes.length,
         'finalBufferedAmount': _dataChannel!.bufferedAmount
       });
+      
+      // Show upload completion notification
+      _notificationService.showFileUploadComplete(
+        fileName: f.name,
+        deviceName: _peerId,
+      );
       
       // End of this file
       final fileEnd = jsonEncode({
@@ -508,17 +525,35 @@ class WebRTCService {
   void _handleClipboardPayload(String payload) {
     try {
       final clipboardContent = _fileTransferService.deserializeClipboardContent(payload);
-      if (clipboardContent.isFiles) {
-        _log('📁 RECEIVED FILES (JSON PAYLOAD)', '${clipboardContent.files.length} files');
+      if (clipboardContent.isFiles && clipboardContent.files.isNotEmpty) {
+        // Use the file transfer service to handle files
         _fileTransferService.setClipboardContent(clipboardContent);
         _log('✅ FILES HANDLED VIA EXISTING FLOW');
+        
+        // Show success notification for file clipboard receive
+        final fileNames = clipboardContent.files.map((f) => f.name).join(', ');
+        _notificationService.showClipboardReceiveSuccess(
+          deviceName: _peerId,
+          contentType: '${clipboardContent.files.length} files: $fileNames',
+        );
       } else {
         _log('📝 RECEIVED TEXT', clipboardContent.text);
         Clipboard.setData(ClipboardData(text: clipboardContent.text));
         _log('📋 TEXT CLIPBOARD UPDATED SUCCESSFULLY');
+        
+        // Show success notification for text clipboard receive
+        _notificationService.showClipboardReceiveSuccess(
+          deviceName: _peerId,
+          contentType: 'text',
+        );
       }
     } catch (e) {
       _log('❌ ERROR PROCESSING RECEIVED DATA', e.toString());
+      
+      // Show failure notification for clipboard receive error
+      _notificationService.showClipboardReceiveFailure(
+        reason: 'Error processing received data: $e',
+      );
     }
   }
 
@@ -997,10 +1032,25 @@ class WebRTCService {
       final incoming = session.files[fileIndex];
       incoming.sink.add(bytes);
       incoming.received += bytes.length;
+      
+      // Calculate progress percentage
+      final progressPercentage = incoming.size > 0 
+          ? (incoming.received / incoming.size * 100).round()
+          : 0;
+      
       final receivedMB = incoming.received / (1024 * 1024);
       if (receivedMB.toInt() > (incoming.lastReportedMB ?? -1)) {
-        _log('⬇️ PROGRESS', {'file': incoming.name, 'received': incoming.received, 'of': incoming.size});
+        _log('⬇️ PROGRESS', {'file': incoming.name, 'received': incoming.received, 'of': incoming.size, 'progress': '${progressPercentage}%'});
         incoming.lastReportedMB = receivedMB.toInt();
+        
+        // Show notification for download progress at 10% increments
+        if (progressPercentage > 0 && progressPercentage % 10 == 0 && progressPercentage < 100) {
+          _notificationService.showFileDownloadProgress(
+            progressPercentage: progressPercentage,
+            fileName: incoming.name,
+            deviceName: _peerId,
+          );
+        }
       }
 
       // Send ACK for flow control
@@ -1034,6 +1084,13 @@ class WebRTCService {
       await incoming.sink.flush();
       await incoming.sink.close();
       _log('✅ FILE STREAM CLOSED', {'file': incoming.name, 'bytes': incoming.received});
+      
+      // Show download completion notification
+      _notificationService.showFileDownloadComplete(
+        fileName: incoming.name,
+        deviceName: _peerId,
+        filePath: incoming.file.path,
+      );
     } catch (e) {
       _log('❌ ERROR CLOSING FILE SINK', e.toString());
     }
