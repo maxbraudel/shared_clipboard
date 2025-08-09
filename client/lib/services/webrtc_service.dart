@@ -6,7 +6,6 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
-import 'package:shared_clipboard/services/notification_service.dart';
 import 'package:file_picker/file_picker.dart';
 
 
@@ -947,11 +946,6 @@ class WebRTCService {
           for (final created in incomingFiles) {
             await created.sink.close();
             await created.file.delete();
-            // Cancel any notifications that were started
-            await NotificationService.cancelDownloadNotification(
-              sessionId: '${sessionId}_${created.name}',
-              fileName: created.name,
-            );
           }
           return false;
         }
@@ -976,16 +970,6 @@ class WebRTCService {
         'dir': session.dirPath,
         'files': session.files.length
       });
-
-      // Start download notifications for each file
-      for (final file in incomingFiles) {
-        await NotificationService.startDownloadNotification(
-          fileName: file.name,
-          sessionId: '${sessionId}_${file.name}',
-          totalBytes: file.size,
-        );
-      }
-
       return true;
     } catch (e) {
       _log('❌ ERROR PREPARING FILE SESSION', e.toString());
@@ -993,11 +977,6 @@ class WebRTCService {
       for (final created in incomingFiles) {
         await created.sink.close();
         await created.file.delete();
-        // Cancel any notifications that might have been started
-        await NotificationService.cancelDownloadNotification(
-          sessionId: '${sessionId}_${created.name}',
-          fileName: created.name,
-        );
       }
       return false;
     }
@@ -1023,14 +1002,6 @@ class WebRTCService {
         _log('⬇️ PROGRESS', {'file': incoming.name, 'received': incoming.received, 'of': incoming.size});
         incoming.lastReportedMB = receivedMB.toInt();
       }
-
-      // Update download progress notification
-      await NotificationService.updateDownloadProgress(
-        sessionId: '${sessionId}_${incoming.name}',
-        fileName: incoming.name,
-        receivedBytes: incoming.received,
-        totalBytes: incoming.size,
-      );
 
       // Send ACK for flow control
       session.chunksReceived++;
@@ -1063,13 +1034,6 @@ class WebRTCService {
       await incoming.sink.flush();
       await incoming.sink.close();
       _log('✅ FILE STREAM CLOSED', {'file': incoming.name, 'bytes': incoming.received});
-
-      // Complete download notification
-      await NotificationService.completeDownloadNotification(
-        sessionId: '${sessionId}_${incoming.name}',
-        fileName: incoming.name,
-        totalBytes: incoming.received,
-      );
     } catch (e) {
       _log('❌ ERROR CLOSING FILE SINK', e.toString());
     }
@@ -1137,11 +1101,6 @@ class WebRTCService {
             await f.file.delete();
           }
         } catch (_) {}
-        // Cancel download notification
-        await NotificationService.cancelDownloadNotification(
-          sessionId: '${sessionId}_${f.name}',
-          fileName: f.name,
-        );
       }
       _log('🧹 FILE SESSION ABORTED AND CLEANED', {'sessionId': sessionId});
     } catch (e) {
