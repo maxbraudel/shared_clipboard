@@ -22,7 +22,6 @@ dependencies:
   mime: ^1.0.4
   crypto: ^3.0.2
   windows_taskbar: ^1.0.0
-  flutter_local_notifications: ^17.2.4
 
 
 dev_dependencies:

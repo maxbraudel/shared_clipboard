@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_clipboard/ui/home_page.dart';
 import 'package:shared_clipboard/services/tray_service.dart';
-import 'package:shared_clipboard/services/notification_service.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 
@@ -31,9 +30,6 @@ void main() async {
   
   // Initialize system tray after window is ready
   await TrayService.init();
-  
-  // Initialize notification service
-  await NotificationService().initialize();
   
   // Run the app
   runApp(BackgroundApp());

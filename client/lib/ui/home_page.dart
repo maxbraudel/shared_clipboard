@@ -6,7 +6,6 @@ import 'dart:async';
 import 'package:shared_clipboard/services/socket_service.dart';
 import 'package:shared_clipboard/services/webrtc_service.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
-import 'package:shared_clipboard/services/notification_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -20,7 +19,6 @@ class _HomePageState extends State<HomePage> {
   late SocketService _socketService;
   late WebRTCService _webrtcService;
   late FileTransferService _fileTransferService;
-  final NotificationService _notificationService = NotificationService();
   bool _isInitialized = false;
   bool _isLoadingDevices = true; // Track device discovery loading state
   List<Map<String, dynamic>> _connectedDevices = [];
@@ -276,7 +274,7 @@ class _HomePageState extends State<HomePage> {
       
       if (clipboardContent.isFiles && clipboardContent.files.isNotEmpty) {
         // Files detected in clipboard
-        print('📁 FILES DETECTED IN CLIPBOARD: ${clipboardContent.files.length} files');
+        print('� FILES DETECTED IN CLIPBOARD: ${clipboardContent.files.length} files');
         print('📤 SENDING SHARE-READY TO SERVER (FILES)');
         _socketService.sendShareReady();
         setState(() {
@@ -284,38 +282,26 @@ class _HomePageState extends State<HomePage> {
           _status = 'Ready to share ${clipboardContent.files.length} files: ${_truncateText(fileNames)}';
         });
         print("📋 FILES READY TO SHARE: ${clipboardContent.files.map((f) => f.name).join(', ')}");
-        
-        // Show success notification for clipboard share preparation
-        _notificationService.showClipboardShareSuccess();
       } else if (clipboardContent.text.isNotEmpty) {
         // Regular text in clipboard
-        print('📝 TEXT DETECTED IN CLIPBOARD: "${clipboardContent.text}"');
+        print('� TEXT DETECTED IN CLIPBOARD: "${clipboardContent.text}"');
         print('📤 SENDING SHARE-READY TO SERVER (TEXT)');
         _socketService.sendShareReady();
         setState(() {
           _status = 'Ready to share: "${_truncateText(clipboardContent.text)}"';
         });
         print("📋 TEXT READY TO SHARE: ${clipboardContent.text}");
-        
-        // Show success notification for clipboard share preparation
-        _notificationService.showClipboardShareSuccess();
       } else {
         setState(() {
           _status = 'No content in clipboard';
         });
         print('❌ NO CONTENT IN CLIPBOARD');
-        
-        // Show failure notification for empty clipboard
-        _notificationService.showClipboardShareFailure(reason: 'No content in clipboard');
       }
     } catch (e) {
       setState(() {
         _status = 'Error reading clipboard: $e';
       });
       print('❌ CLIPBOARD READ ERROR: $e');
-      
-      // Show failure notification for clipboard share error
-      _notificationService.showClipboardShareFailure(reason: 'Error reading clipboard: $e');
     }
   }
 
