@@ -14,20 +14,21 @@
 // #include <winrt/Windows.UI.Notifications.h>
 // #include <winrt/Windows.Data.Xml.Dom.h>
 
-// Global plugin instance to avoid inheritance issues
+// Global plugin instance and channel to avoid Flutter framework dependencies
 static std::unique_ptr<WindowsNotificationsPlugin> g_plugin_instance;
+static std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> g_method_channel;
 
 // static
 void WindowsNotificationsPlugin::RegisterWithRegistrar(
     flutter::PluginRegistrarWindows* registrar) {
-  auto channel =
+  g_method_channel =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           registrar->messenger(), "windows_notifications",
           &flutter::StandardMethodCodec::GetInstance());
 
   g_plugin_instance = std::make_unique<WindowsNotificationsPlugin>();
 
-  channel->SetMethodCallHandler(
+  g_method_channel->SetMethodCallHandler(
       [](const auto& call, auto result) {
         if (g_plugin_instance) {
           g_plugin_instance->HandleMethodCall(call, std::move(result));
@@ -36,9 +37,7 @@ void WindowsNotificationsPlugin::RegisterWithRegistrar(
         }
       });
 
-  // Don't call AddPlugin - just keep the channel alive by storing it
-  // This avoids the inheritance requirement
-  static auto stored_channel = std::move(channel);
+  // No need to call AddPlugin - the method channel is registered directly
 }
 
 WindowsNotificationsPlugin::WindowsNotificationsPlugin() : initialized_(false) {}
@@ -198,10 +197,13 @@ void WindowsNotificationsPlugin::ShowCompletionToast(const std::string& title,
 // std::wstring WindowsNotificationsPlugin::CreateCompletionToastXml(...)
 // std::wstring WindowsNotificationsPlugin::StringToWString(...)
 
-// External C function for plugin registration
+// Simplified C function for plugin registration - avoids Flutter framework dependencies
 extern "C" __declspec(dllexport) void WindowsNotificationsPluginRegisterWithRegistrar(
     FlutterDesktopPluginRegistrarRef registrar) {
-  WindowsNotificationsPlugin::RegisterWithRegistrar(
-      flutter::PluginRegistrarManager::GetInstance()
-          ->GetRegistrar<flutter::PluginRegistrarWindows>(registrar));
+  // Create a simple wrapper to avoid PluginRegistrarManager dependencies
+  auto windows_registrar = std::make_unique<flutter::PluginRegistrarWindows>(registrar);
+  WindowsNotificationsPlugin::RegisterWithRegistrar(windows_registrar.get());
+  
+  // Keep the registrar alive
+  static auto stored_registrar = std::move(windows_registrar);
 }
