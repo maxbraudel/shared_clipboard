@@ -52,11 +52,12 @@ function(APPLY_STANDARD_SETTINGS TARGET)
   
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")
   
-  # Add Windows Runtime support for WinRT APIs
-  if(WIN32)
-    set_property(TARGET ${TARGET} PROPERTY VS_WINRT_COMPONENT TRUE)
-    target_compile_definitions(${TARGET} PRIVATE WINRT_LEAN_AND_MEAN)
-  endif()
+  # WinRT support temporarily disabled due to Microsoft.VCLibs SDK dependency issues
+  # Will be re-enabled once build environment is properly configured
+  # if(WIN32)
+  #   set_property(TARGET ${TARGET} PROPERTY VS_WINRT_COMPONENT TRUE)
+  #   target_compile_definitions(${TARGET} PRIVATE WINRT_LEAN_AND_MEAN)
+  # endif()
 endfunction()
 
 # Flutter library and tool build rules.
