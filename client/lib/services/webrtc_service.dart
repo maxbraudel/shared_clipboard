@@ -1303,7 +1303,7 @@ class WebRTCService {
       
       // Show download completion notifications for each file
       for (final f in session.files) {
-        _notificationService.showFileDownloadComplete(f.name, _peerId ?? 'Unknown Device');
+        _notificationService.showFileDownloadComplete(f.name);
       }
 
       // ACK for 'end' is sent immediately upon receiving 'end' mode to unblock sender
