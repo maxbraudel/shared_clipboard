@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:collection';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -36,7 +37,15 @@ class WebRTCService {
   // Streaming files state (proto v2)
   final Map<String, _FileSession> _fileSessions = {};
   final Map<String, Completer<void>> _sessionReadyCompleters = {};
-  Completer<void>? _ackCompleter;
+  Completer<void>? _ackCompleter; // legacy chunk ACK (every 100 chunks) for current active send
+  // Per-session ACK waiters for critical boundaries
+  final Map<String, Completer<void>> _ackWaiters = {}; // key: "sessionId:ackType"
+
+  // Outgoing send queue and state
+  final Queue<_OutgoingItem> _outgoingQueue = Queue<_OutgoingItem>();
+  bool _isSending = false;
+  ClipboardContent? _preparedOutgoingContent; // used by createOffer to skip re-reading clipboard
+  String? _preparedPeerId; // used when dequeuing to preserve target peer
   
   // Callback to send signals back to socket service
   Function(String to, dynamic signal)? onSignalGenerated;
@@ -50,6 +59,31 @@ class WebRTCService {
     } else {
       _logger.i(message);
     }
+
+  void _startNextSendIfAny() {
+    if (_isSending) return; // already busy
+    if (_outgoingQueue.isEmpty) return;
+    final next = _outgoingQueue.removeFirst();
+    _preparedOutgoingContent = next.content;
+    _preparedPeerId = next.peerId;
+    _log('🚚 STARTING NEXT QUEUED SEND', {
+      'remaining': _outgoingQueue.length,
+      'type': next.content.isFiles ? 'files' : 'text'
+    });
+    // Kick off new offer; createOffer will use prepared content
+    // Ignore await to avoid blocking current context
+    // Use stored peer or null to default behavior if not provided
+    () async {
+      try {
+        await createOffer(next.peerId);
+      } catch (e) {
+        _log('❌ ERROR STARTING NEXT SEND', e.toString());
+        // Try next in queue if available
+        _isSending = false;
+        _startNextSendIfAny();
+      }
+    }();
+  }
   }
 
   // Streaming files protocol (proto v2)
@@ -178,6 +212,8 @@ class WebRTCService {
       }
 
       // End of this file
+      final fileEndAckKey = '$sessionId:file_end';
+      _ackWaiters[fileEndAckKey] = Completer<void>();
       final fileEnd = jsonEncode({
         '__sc_proto': 2,
         'kind': 'files',
@@ -188,16 +224,15 @@ class WebRTCService {
       _dataChannel!.send(RTCDataChannelMessage(fileEnd));
 
       // Wait for ACK confirming receiver processed file end
-      _log('⏳ WAITING FOR FILE_END ACK');
-      _ackCompleter = Completer<void>();
+      _log('⏳ WAITING FOR FILE_END ACK (scoped)');
       try {
-        await _ackCompleter!.future.timeout(const Duration(seconds: 30));
+        await _ackWaiters[fileEndAckKey]!.future.timeout(const Duration(seconds: 30));
         _log('✅ FILE_END ACK RECEIVED');
       } catch (e) {
         _log('❌ FILE_END ACK TIMEOUT', e.toString());
         throw Exception('File end ACK timeout');
       } finally {
-        _ackCompleter = null;
+        _ackWaiters.remove(fileEndAckKey);
       }
     }
 
@@ -213,6 +248,8 @@ class WebRTCService {
     }
 
     // End session
+    final endAckKey = '$sessionId:end';
+    _ackWaiters[endAckKey] = Completer<void>();
     final endEnv = jsonEncode({
       '__sc_proto': 2,
       'kind': 'files',
@@ -222,16 +259,18 @@ class WebRTCService {
     _dataChannel!.send(RTCDataChannelMessage(endEnv));
 
     // Wait for final ACK after receiver finalizes
-    _log('⏳ WAITING FOR SESSION END ACK');
-    _ackCompleter = Completer<void>();
+    _log('⏳ WAITING FOR SESSION END ACK (scoped)');
     try {
-      await _ackCompleter!.future.timeout(const Duration(seconds: 30));
+      await _ackWaiters[endAckKey]!.future.timeout(const Duration(seconds: 30));
       _log('✅ SESSION END ACK RECEIVED');
     } catch (e) {
       _log('❌ SESSION END ACK TIMEOUT', e.toString());
       throw Exception('Session end ACK timeout');
     } finally {
-      _ackCompleter = null;
+      _ackWaiters.remove(endAckKey);
+      // Current send session finished; drain queue
+      _isSending = false;
+      _startNextSendIfAny();
     }
   }
 
@@ -331,13 +370,32 @@ class WebRTCService {
       final text = message.text;
       _log('📥 RECEIVED DATA MESSAGE (RECEIVER ROLE)', '${text.length} bytes');
       try {
-        // Handle ACKs for flow control
-        if (text == '{"__sc_proto":2,"kind":"ack"}') {
-          _log('📬 ACK RECEIVED');
-          if (_ackCompleter != null && !_ackCompleter!.isCompleted) {
-            _ackCompleter!.complete();
+        // Handle ACKs
+        if (text.startsWith('{') && text.contains('"kind":"ack"')) {
+          try {
+            final Map<String, dynamic> ack = jsonDecode(text);
+            if (ack['__sc_proto'] == 2 && ack['kind'] == 'ack') {
+              final sid = ack['sessionId'] as String?;
+              final at = ack['ack'] as String?; // 'chunks' | 'file_end' | 'end'
+              if (sid != null && at != null) {
+                final key = '$sid:$at';
+                final c = _ackWaiters[key];
+                if (c != null && !c.isCompleted) {
+                  _log('📬 ACK RECEIVED (scoped)', {'sessionId': sid, 'ack': at});
+                  c.complete();
+                  return;
+                }
+              }
+              // Fallback: legacy chunk ACK without session scoping
+              if (_ackCompleter != null && !_ackCompleter!.isCompleted) {
+                _log('📬 ACK RECEIVED (legacy)');
+                _ackCompleter!.complete();
+                return;
+              }
+            }
+          } catch (_) {
+            // Not a JSON ack we recognize; continue parsing below
           }
-          return; // ACK handled
         }
 
         // Try to parse as protocol envelope
@@ -402,10 +460,28 @@ class WebRTCService {
             if (mode == 'file_end' && sessionId != null) {
               final idx = env['fileIndex'] as int? ?? 0;
               _handleFileEnd(sessionId, idx);
+              // Send scoped ACK for file_end
+              final ack = jsonEncode({
+                '__sc_proto': 2,
+                'kind': 'ack',
+                'sessionId': sessionId,
+                'ack': 'file_end',
+              });
+              _dataChannel?.send(RTCDataChannelMessage(ack));
               return;
             }
             if (mode == 'end' && sessionId != null) {
-              _finalizeFileSession(sessionId);
+              // Immediately ACK end to unblock sender, then finalize asynchronously
+              final ack = jsonEncode({
+                '__sc_proto': 2,
+                'kind': 'ack',
+                'sessionId': sessionId,
+                'ack': 'end',
+              });
+              _dataChannel?.send(RTCDataChannelMessage(ack));
+              () async {
+                await _finalizeFileSession(sessionId);
+              }();
               return;
             }
           }
@@ -469,8 +545,12 @@ class WebRTCService {
         _sendFilesStreaming(content).then((_) {
           _log('✅ FILES STREAMED SUCCESSFULLY');
           _pendingClipboardContent = null;
+          _isSending = false;
+          _startNextSendIfAny();
         }).catchError((e) {
           _log('❌ ERROR STREAMING FILES', e.toString());
+          _isSending = false;
+          _startNextSendIfAny();
         });
       } else {
         final payload = _fileTransferService.serializeClipboardContent(content);
@@ -478,8 +558,12 @@ class WebRTCService {
         _sendLargeMessage(payload).then((_) {
           _log('✅ CLIPBOARD CONTENT SENT SUCCESSFULLY');
           _pendingClipboardContent = null;
+          _isSending = false;
+          _startNextSendIfAny();
         }).catchError((e) {
           _log('❌ ERROR SENDING CLIPBOARD CONTENT', e.toString());
+          _isSending = false;
+          _startNextSendIfAny();
         });
       }
     } else {
@@ -647,7 +731,27 @@ class WebRTCService {
     try {
       _log('🎯 createOffer CALLED', peerId);
       
-      // Reset connection state for clean start
+      // If a send is in progress, queue this new share instead of aborting
+      if (_isSending) {
+        _log('⏳ SEND IN PROGRESS, QUEUEING NEW OUTGOING SHARE');
+        try {
+          final clipboardContent = await _fileTransferService.getClipboardContent();
+          if (!clipboardContent.isFiles && clipboardContent.text.isEmpty) {
+            _log('❌ NO CLIPBOARD CONTENT TO QUEUE');
+            return;
+          }
+          _outgoingQueue.add(_OutgoingItem(peerId, clipboardContent));
+          _log('📦 QUEUED OUTGOING SHARE', {
+            'queueLength': _outgoingQueue.length,
+            'type': clipboardContent.isFiles ? 'files' : 'text'
+          });
+        } catch (e) {
+          _log('❌ ERROR READING CLIPBOARD FOR QUEUE', e.toString());
+        }
+        return;
+      }
+
+      // Reset connection state for clean start of this send
       await _resetConnection();
       
       if (_peerConnection == null) {
@@ -655,29 +759,43 @@ class WebRTCService {
         return;
       }
       
-      // Set peer ID if provided
-      if (peerId != null) {
-        _peerId = peerId;
-        _log('🎯 CREATING OFFER FOR PEER', peerId);
+      // Set peer ID if provided or prepared
+      final targetPeer = _preparedPeerId ?? peerId;
+      if (targetPeer != null) {
+        _peerId = targetPeer;
+        _log('🎯 CREATING OFFER FOR PEER', targetPeer);
       }
       
-      // Read current clipboard content (text or files)
+      // Determine content to send: either prepared dequeued content or read clipboard now
       try {
-        _log('📋 READING CLIPBOARD FOR OFFER');
-        final clipboardContent = await _fileTransferService.getClipboardContent();
-        
-        if (clipboardContent.isFiles) {
-          _log('📁 FOUND FILES IN CLIPBOARD', '${clipboardContent.files.length} files');
-          _pendingClipboardContent = clipboardContent; // we'll stream them
-          _log('📦 FILES READY FOR STREAMING', {'count': clipboardContent.files.length});
-        } else if (clipboardContent.text.isNotEmpty) {
-          _log('📝 FOUND TEXT IN CLIPBOARD', clipboardContent.text);
-          _pendingClipboardContent = clipboardContent; // will serialize at send
+        if (_preparedOutgoingContent != null) {
+          _pendingClipboardContent = _preparedOutgoingContent;
+          _log('📦 USING PREPARED OUTGOING CONTENT', {
+            'type': _pendingClipboardContent!.isFiles ? 'files' : 'text'
+          });
         } else {
-          _log('❌ NO CLIPBOARD CONTENT TO SHARE');
+          _log('📋 READING CLIPBOARD FOR OFFER');
+          final clipboardContent = await _fileTransferService.getClipboardContent();
+          if (clipboardContent.isFiles) {
+            _log('📁 FOUND FILES IN CLIPBOARD', '${clipboardContent.files.length} files');
+            _pendingClipboardContent = clipboardContent; // we'll stream them
+            _log('📦 FILES READY FOR STREAMING', {'count': clipboardContent.files.length});
+          } else if (clipboardContent.text.isNotEmpty) {
+            _log('📝 FOUND TEXT IN CLIPBOARD', clipboardContent.text);
+            _pendingClipboardContent = clipboardContent; // will serialize at send
+          } else {
+            _log('❌ NO CLIPBOARD CONTENT TO SHARE');
+          }
         }
       } catch (e) {
         _log('❌ ERROR READING CLIPBOARD', e.toString());
+      } finally {
+        // Mark sending started if we have content; clear prepared flags
+        if (_pendingClipboardContent != null) {
+          _isSending = true;
+        }
+        _preparedOutgoingContent = null;
+        _preparedPeerId = null;
       }
       
       // Create data channel with proper configuration for large file transfers
@@ -1080,10 +1198,6 @@ class WebRTCService {
   }
 
   Future<void> _handleFileEnd(String sessionId, int fileIndex) async {
-    // Send final ACK to ensure sender can complete
-    _log('📬 SENDING FINAL ACK');
-    _dataChannel?.send(RTCDataChannelMessage('{"__sc_proto":2,"kind":"ack"}'));
-
     final session = _fileSessions[sessionId];
     if (session == null) {
       _log('⚠️ RECEIVED END FOR UNKNOWN SESSION', sessionId);
@@ -1153,9 +1267,7 @@ class WebRTCService {
         _notificationService.showFileDownloadComplete(f.name, _peerId ?? 'Unknown Device');
       }
 
-      // Send final ACK to confirm session end to sender
-      _log('📬 SENDING SESSION END ACK');
-      _dataChannel?.send(RTCDataChannelMessage('{"__sc_proto":2,"kind":"ack"}'));
+      // ACK for 'end' is sent immediately upon receiving 'end' mode to unblock sender
     } catch (e) {
       _log('❌ ERROR FINALIZING FILE SESSION', e.toString());
     }
