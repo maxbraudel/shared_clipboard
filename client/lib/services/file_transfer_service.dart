@@ -164,7 +164,16 @@ class FileTransferService {
       // Check if it's file paths (works on Windows and macOS when paths are in text)
       if (_looksLikeFilePaths(text)) {
         _log('📁 PROCESSING FILE PATHS FROM CLIPBOARD');
-        return await _processFilePaths(text);
+        final fileResult = await _processFilePaths(text);
+        
+        // If file processing failed (returned error message), fall back to original text
+        if (fileResult.isFiles == false && 
+            (fileResult.text.contains('No valid files found') || fileResult.text.contains('Error processing files'))) {
+          _log('⚠️ FILE PROCESSING FAILED, USING ORIGINAL TEXT');
+          return ClipboardContent.text(text);
+        }
+        
+        return fileResult;
       }
       
       // Regular text

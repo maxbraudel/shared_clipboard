@@ -18,7 +18,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  String _status = 'Initializing...';
+
   late SocketService _socketService;
   late WebRTCService _webrtcService;
   late FileTransferService _fileTransferService;
@@ -29,12 +29,112 @@ class _HomePageState extends State<HomePage> {
   final List<Map<String, dynamic>> _connectedDevices = [];
   Timer? _updateTimer;
 
+  // New state tracking for UI categories
+  String? _lastSharedType; // 'file' or 'text'
+  String? _lastSharedContent; // file name or first 30 chars of text
+  String? _lastRetrievedType; // 'file' or 'text'
+  String? _lastRetrievedContent; // file name or first 30 chars of text
+  String? _lastRetrievedOrigin; // sender client name
+  final List<String> _pendingRequests = []; // queued clipboard requests
+  bool _isDownloading = false;
+  double _downloadProgress = 0.0;
+  String? _currentDownloadFileName;
+  
+  // Request queue management (requesting client side)
+  final List<String> _requestQueue = []; // queue of pending requests to process
+  bool _isRequestingClipboard = false; // track if currently requesting
+
   // Helper function to truncate long text with ellipsis
   String _truncateText(String text, {int maxLength = 200}) {
     if (text.length <= maxLength) {
       return text;
     }
     return '${text.substring(0, maxLength)}...';
+  }
+
+  // State update methods for UI categories
+  void _updateSharedClipboard(String type, String content) {
+    setState(() {
+      _lastSharedType = type;
+      _lastSharedContent = type == 'text' ? _truncateText(content, maxLength: 30) : content;
+    });
+  }
+
+  void _updateRetrievedClipboard(String type, String content, String origin) {
+    setState(() {
+      _lastRetrievedType = type;
+      _lastRetrievedContent = type == 'text' ? _truncateText(content, maxLength: 30) : content;
+      _lastRetrievedOrigin = origin;
+    });
+  }
+
+  void _addPendingRequest(String request) {
+    setState(() {
+      _pendingRequests.add(request);
+    });
+  }
+
+  void _removePendingRequest(String request) {
+    setState(() {
+      _pendingRequests.remove(request);
+    });
+  }
+
+  void _updateDownloadProgress(String fileName, double progress) {
+    setState(() {
+      _isDownloading = true;
+      _currentDownloadFileName = fileName;
+      _downloadProgress = progress;
+    });
+  }
+
+  void _clearDownloadProgress() {
+    setState(() {
+      _isDownloading = false;
+      _currentDownloadFileName = null;
+      _downloadProgress = 0.0;
+    });
+  }
+
+  void _setupWebRTCCallbacks() {
+    // Set up callback for when clipboard content is successfully received
+    _webrtcService.onClipboardReceived = (String type, String content, String origin) {
+      _logger.i('Clipboard received callback: $type from $origin');
+      
+      // Clear any pending requests (since we successfully received content)
+      setState(() {
+        _pendingRequests.clear();
+        _isRequestingClipboard = false; // Clear requesting state
+      });
+      
+      // Update retrieved clipboard state
+      _updateRetrievedClipboard(type, content, origin);
+      
+      // Process next queued request if any
+      _processNextQueuedRequest();
+      
+      _logger.i('UI state updated for received clipboard content');
+    };
+    
+    // Set up callback for download progress updates
+    _webrtcService.onDownloadProgress = (String fileName, double progress) {
+      _logger.i('Download progress callback: $fileName at ${(progress * 100).toInt()}%');
+      _updateDownloadProgress(fileName, progress);
+    };
+    
+    // Set up callback for download completion
+    _webrtcService.onDownloadComplete = () {
+      _logger.i('Download complete callback');
+      _clearDownloadProgress();
+      
+      // Clear requesting state and process next queued request
+      setState(() {
+        _isRequestingClipboard = false;
+      });
+      _processNextQueuedRequest();
+    };
+    
+    _logger.i('WebRTC callbacks setup completed');
   }
 
   Future<void> _registerGlobalHotkeys() async {
@@ -104,6 +204,9 @@ class _HomePageState extends State<HomePage> {
       _logger.i('Initializing WebRTC service');
       _webrtcService.init();
       
+      // Set up WebRTC callbacks for UI state tracking
+      _setupWebRTCCallbacks();
+      
       // Then initialize Socket service
       _logger.i('Initializing Socket service');
       _socketService.init(webrtcService: _webrtcService);
@@ -161,7 +264,6 @@ class _HomePageState extends State<HomePage> {
       };
       
       setState(() {
-        _status = 'Ready';
         _isInitialized = true;
       });
       
@@ -189,9 +291,6 @@ class _HomePageState extends State<HomePage> {
       await _registerGlobalHotkeys();
     } catch (e) {
       _logger.e('Service initialization error', e);
-      setState(() {
-        _status = 'Initialization failed: $e';
-      });
     }
   }
 
@@ -201,63 +300,65 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('Shared Clipboard'),
         backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
       ),
       body: Container(
-        color: Colors.white,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              const Icon(
-                Icons.content_copy,
-                size: 64,
-                color: Colors.blue,
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Shared Clipboard',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+        color: Colors.grey[50],
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+
+            
+            // Action Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isInitialized ? _shareClipboard : null,
+                    icon: const Icon(Icons.share),
+                    label: const Text('Share (Cmd/Ctrl+F12)'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                _status,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[600],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isInitialized ? _requestClipboard : null,
+                    icon: const Icon(Icons.download),
+                    label: const Text('Request (Cmd/Ctrl+F11)'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
                 ),
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 3,
+              ],
+            ),
+            const SizedBox(height: 20),
+            
+            // Categories
+            Expanded(
+              child: ListView(
+                children: [
+                  _buildConnectedDevicesSection(),
+                  const SizedBox(height: 16),
+                  _buildSharedClipboardSection(),
+                  const SizedBox(height: 16),
+                  _buildRetrievedClipboardSection(),
+                  const SizedBox(height: 16),
+                  _buildPendingRequestsSection(),
+                  const SizedBox(height: 16),
+                  _buildCurrentDownloadSection(),
+                ],
               ),
-              const SizedBox(height: 30),
-              _buildConnectedDevicesSection(),
-              const SizedBox(height: 30),
-              ElevatedButton.icon(
-                onPressed: _isInitialized ? () {
-                  _shareClipboard();
-                } : null,
-                icon: const Icon(Icons.share),
-                label: const Text('Share Clipboard (Cmd/Ctrl+F12)'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                ),
-              ),
-              const SizedBox(height: 10),
-              ElevatedButton.icon(
-                onPressed: _isInitialized ? () {
-                  _requestClipboard();
-                } : null,
-                icon: const Icon(Icons.download),
-                label: const Text('Get Clipboard (Cmd/Ctrl+F11)'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -266,9 +367,7 @@ class _HomePageState extends State<HomePage> {
   void _shareClipboard() async {
     if (!_isInitialized) return;
     
-    setState(() {
-      _status = 'Reading clipboard...';
-    });
+
     
     try {
       _logger.i('Reading clipboard for sharing');
@@ -281,10 +380,13 @@ class _HomePageState extends State<HomePage> {
         _logger.i('Files detected in clipboard', {'count': clipboardContent.files.length});
         _logger.d('Sending share-ready to server (files)');
         _socketService.sendShareReady();
-        setState(() {
-          final fileNames = clipboardContent.files.map((f) => f.name).join(', ');
-          _status = 'Ready to share ${clipboardContent.files.length} files: ${_truncateText(fileNames)}';
-        });
+        
+        final fileNames = clipboardContent.files.map((f) => f.name).join(', ');
+
+        
+        // Update shared clipboard UI state
+        _updateSharedClipboard('file', clipboardContent.files.first.name);
+        
         _logger.d('Files ready to share', {
           'files': clipboardContent.files.map((f) => f.name).join(', '),
         });
@@ -299,9 +401,16 @@ class _HomePageState extends State<HomePage> {
         _logger.i('Text detected in clipboard');
         _logger.d('Sending share-ready to server (text)');
         _socketService.sendShareReady();
-        setState(() {
-          _status = 'Ready to share: "${_truncateText(clipboardContent.text)}"';
-        });
+        
+        // Get raw clipboard text for UI display (avoid processed error messages)
+        final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+        final rawText = clipboardData?.text ?? clipboardContent.text;
+        
+
+        
+        // Update shared clipboard UI state with raw text
+        _updateSharedClipboard('text', rawText);
+        
         _logger.d('Text ready to share');
         
         // Show success notification for text
@@ -310,16 +419,11 @@ class _HomePageState extends State<HomePage> {
           _notificationService.showClipboardShareSuccess(deviceNames);
         }
       } else {
-        setState(() {
-          _status = 'No content in clipboard';
-        });
+
         _logger.w('No content in clipboard');
         _notificationService.showClipboardShareFailure('Clipboard is empty');
       }
     } catch (e) {
-      setState(() {
-        _status = 'Error reading clipboard: $e';
-      });
       _logger.e('Clipboard read error', e);
       _notificationService.showClipboardShareFailure(e.toString());
     }
@@ -328,40 +432,60 @@ class _HomePageState extends State<HomePage> {
   void _requestClipboard() {
     if (!_isInitialized) return;
     
-    setState(() {
-      _status = 'Requesting clipboard...';
-    });
-    _logger.i('Requesting clipboard from server');
+    // Check if we have connected devices
+    if (_connectedDevices.isEmpty) {
+      _logger.w('No connected devices to request from');
+      _notificationService.showClipboardReceiveFailure('No connected devices');
+      return;
+    }
+    
+    final deviceName = _connectedDevices.isNotEmpty ? _connectedDevices.first['name'] : 'device';
+    
+    // If already downloading/requesting, queue this request locally
+    if (_isRequestingClipboard || _isDownloading) {
+      _logger.i('Already downloading/requesting, queueing request locally');
+      _requestQueue.add('Clipboard request from $deviceName');
+      _addPendingRequest('Clipboard request from $deviceName (queued)');
+      
+      // Show queued notification
+      _notificationService.showTransferQueued('clipboard content', _currentDownloadFileName ?? 'current transfer');
+      return;
+    }
+    
+    // Process request immediately
+    _processClipboardRequest(deviceName);
+  }
+  
+  void _processClipboardRequest(String deviceName) {
+    _logger.i('Processing clipboard request to $deviceName');
     
     try {
-      // Check if we have connected devices
-      if (_connectedDevices.isEmpty) {
-        _logger.w('No connected devices to request from');
-        _notificationService.showClipboardReceiveFailure('No connected devices');
-        setState(() {
-          _status = 'No connected devices';
-        });
-        return;
-      }
+      _isRequestingClipboard = true;
       
       _socketService.sendRequestShare();
       _logger.i('Clipboard request sent successfully');
       
-      // Reset status after a delay if no response
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted && _status == 'Requesting clipboard...') {
-          setState(() {
-            _status = 'Ready';
-          });
-        }
-      });
+      // Add pending request to UI state
+      _addPendingRequest('Clipboard request from $deviceName');
+      
     } catch (e) {
       _logger.e('Error requesting clipboard', e);
       _notificationService.showClipboardReceiveFailure(e.toString());
-      setState(() {
-        _status = 'Error requesting clipboard';
-      });
+      _isRequestingClipboard = false;
     }
+  }
+  
+  void _processNextQueuedRequest() {
+    if (_requestQueue.isEmpty || _isRequestingClipboard || _isDownloading) {
+      return;
+    }
+    
+    _logger.i('Processing next queued request');
+    final nextRequest = _requestQueue.removeAt(0);
+    
+    // Extract device name from request string
+    final deviceName = _connectedDevices.isNotEmpty ? _connectedDevices.first['name'] : 'device';
+    _processClipboardRequest(deviceName);
   }
 
   Widget _buildConnectedDevicesSection() {
@@ -528,6 +652,172 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSharedClipboardSection() {
+    return _buildCategorySection(
+      title: 'Shared Clipboard',
+      icon: Icons.upload,
+      iconColor: Colors.green,
+      child: _lastSharedContent != null
+          ? ListTile(
+              leading: Icon(
+                _lastSharedType == 'file' ? Icons.insert_drive_file : Icons.text_snippet,
+                color: Colors.green,
+              ),
+              title: Text(
+                _lastSharedType == 'file' ? _lastSharedContent! : 'Text: ${_lastSharedContent!}',
+                style: const TextStyle(fontSize: 14),
+              ),
+              subtitle: Text('Type: ${_lastSharedType!}'),
+            )
+          : const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'No clipboard content shared yet',
+                style: TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildRetrievedClipboardSection() {
+    return _buildCategorySection(
+      title: 'Retrieved Clipboard',
+      icon: Icons.download,
+      iconColor: Colors.blue,
+      child: _lastRetrievedContent != null
+          ? ListTile(
+              leading: Icon(
+                _lastRetrievedType == 'file' ? Icons.insert_drive_file : Icons.text_snippet,
+                color: Colors.blue,
+              ),
+              title: Text(
+                _lastRetrievedType == 'file' ? _lastRetrievedContent! : 'Text: ${_lastRetrievedContent!}',
+                style: const TextStyle(fontSize: 14),
+              ),
+              subtitle: Text('From: ${_lastRetrievedOrigin ?? "Unknown"} • Type: ${_lastRetrievedType!}'),
+            )
+          : const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'No clipboard content retrieved yet',
+                style: TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildPendingRequestsSection() {
+    return _buildCategorySection(
+      title: 'Pending Clipboard Requests',
+      icon: Icons.schedule,
+      iconColor: Colors.orange,
+      child: _pendingRequests.isNotEmpty
+          ? Column(
+              children: _pendingRequests.map((request) => 
+                ListTile(
+                  leading: const Icon(Icons.hourglass_empty, color: Colors.orange),
+                  title: Text(
+                    request,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  subtitle: const Text('Waiting for current transfer to complete'),
+                )
+              ).toList(),
+            )
+          : const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'No pending requests',
+                style: TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildCurrentDownloadSection() {
+    return _buildCategorySection(
+      title: 'Current Download',
+      icon: Icons.cloud_download,
+      iconColor: Colors.purple,
+      child: _isDownloading
+          ? Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _currentDownloadFileName ?? 'Downloading...',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: _downloadProgress / 100,
+                    backgroundColor: Colors.grey[300],
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.purple),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_downloadProgress.toStringAsFixed(1)}%',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            )
+          : const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'No active downloads',
+                style: TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildCategorySection({
+    required String title,
+    required IconData icon,
+    required Color iconColor,
+    required Widget child,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 4)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.1),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(8),
+                topRight: Radius.circular(8),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: iconColor, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: iconColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          child,
         ],
       ),
     );

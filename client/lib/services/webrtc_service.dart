@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:collection';
+
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -41,12 +41,15 @@ class WebRTCService {
   // Per-session ACK waiters for critical boundaries
   final Map<String, Completer<void>> _ackWaiters = {}; // key: "sessionId:ackType"
 
-  // Outgoing send queue and state
-  final Queue<_OutgoingItem> _outgoingQueue = Queue<_OutgoingItem>();
+  // Sending state (simplified - no queue management on sender side)
   bool _isSending = false;
   ClipboardContent? _preparedOutgoingContent; // used by createOffer to skip re-reading clipboard
-  String? _preparedPeerId; // used when dequeuing to preserve target peer
   ClipboardContent? _currentTransferContent; // track current transfer for notifications
+  
+  // Callback functions for UI state updates
+  Function(String type, String content, String origin)? onClipboardReceived;
+  Function(String fileName, double progress)? onDownloadProgress;
+  Function()? onDownloadComplete;
   
   // Callback to send signals back to socket service
   Function(String to, dynamic signal)? onSignalGenerated;
@@ -63,71 +66,7 @@ class WebRTCService {
 
   }
 
-  // Helper method to send queued transfer notification to requester
-  Future<void> _sendQueuedTransferNotification(ClipboardContent queuedContent, String? requesterId) async {
-    if (requesterId == null || onSignalGenerated == null) return;
-    
-    try {
-      // Get current transfer info
-      String currentFileName = 'Unknown';
-      String queuedFileName = 'Unknown';
-      
-      if (_currentTransferContent != null) {
-        if (_currentTransferContent!.isFiles && _currentTransferContent!.files.isNotEmpty) {
-          currentFileName = _currentTransferContent!.files.first.name;
-        } else if (!_currentTransferContent!.isFiles) {
-          currentFileName = 'text content';
-        }
-      }
-      
-      if (queuedContent.isFiles && queuedContent.files.isNotEmpty) {
-        queuedFileName = queuedContent.files.first.name;
-      } else if (!queuedContent.isFiles) {
-        queuedFileName = 'text content';
-      }
-      
-      // Send queued notification message to requester via socket
-      final queuedMessage = {
-        'type': 'transfer-queued',
-        'currentFileName': currentFileName,
-        'queuedFileName': queuedFileName
-      };
-      
-      onSignalGenerated!(requesterId, queuedMessage);
-      _log('📤 SENT QUEUED TRANSFER NOTIFICATION TO REQUESTER', {
-        'requesterId': requesterId,
-        'current': currentFileName,
-        'queued': queuedFileName
-      });
-    } catch (e) {
-      _log('❌ ERROR SENDING QUEUED TRANSFER NOTIFICATION', e.toString());
-    }
-  }
-  void _startNextSendIfAny() {
-    if (_isSending) return; // already busy
-    if (_outgoingQueue.isEmpty) return;
-    final next = _outgoingQueue.removeFirst();
-    _preparedOutgoingContent = next.content;
-    _preparedPeerId = next.peerId;
-    _log('🚚 STARTING NEXT QUEUED SEND', {
-      'remaining': _outgoingQueue.length,
-      'type': next.content.isFiles ? 'files' : 'text'
-    });
-    // Kick off new offer; createOffer will use prepared content
-    // Ignore await to avoid blocking current context
-    // Use stored peer or null to default behavior if not provided
-    () async {
-      try {
-        await createOffer(next.peerId);
-      } catch (e) {
-        _log('❌ ERROR STARTING NEXT SEND', e.toString());
-        // Try next in queue if available
-        _isSending = false;
-        _currentTransferContent = null; // Clear current transfer tracking
-        _startNextSendIfAny();
-      }
-    }();
-  }
+
 
   // Streaming files protocol (proto v2)
   Future<void> _sendFilesStreaming(ClipboardContent content) async {
@@ -311,10 +250,9 @@ class WebRTCService {
       throw Exception('Session end ACK timeout');
     } finally {
       _ackWaiters.remove(endAckKey);
-      // Current send session finished; drain queue
+      // Current send session finished
       _isSending = false;
       _currentTransferContent = null; // Clear current transfer tracking
-      _startNextSendIfAny();
     }
   }
 
@@ -591,12 +529,10 @@ class WebRTCService {
           _pendingClipboardContent = null;
           _isSending = false;
           _currentTransferContent = null; // Clear current transfer tracking
-          _startNextSendIfAny();
         }).catchError((e) {
           _log('❌ ERROR STREAMING FILES', e.toString());
           _isSending = false;
           _currentTransferContent = null; // Clear current transfer tracking
-          _startNextSendIfAny();
         });
       } else {
         final payload = _fileTransferService.serializeClipboardContent(content);
@@ -606,12 +542,10 @@ class WebRTCService {
           _pendingClipboardContent = null;
           _isSending = false;
           _currentTransferContent = null; // Clear current transfer tracking
-          _startNextSendIfAny();
         }).catchError((e) {
           _log('❌ ERROR SENDING CLIPBOARD CONTENT', e.toString());
           _isSending = false;
           _currentTransferContent = null; // Clear current transfer tracking
-          _startNextSendIfAny();
         });
       }
     } else {
@@ -685,6 +619,12 @@ class WebRTCService {
         
         // Show clipboard receive success notification for files
         _notificationService.showClipboardReceiveSuccess(_peerId ?? 'Unknown Device', isFile: true);
+        
+        // Notify UI about received files
+        if (onClipboardReceived != null) {
+          final fileName = clipboardContent.files.isNotEmpty ? clipboardContent.files.first.name : 'files';
+          onClipboardReceived!('file', fileName, _peerId ?? 'Unknown Device');
+        }
       } else {
         _log('📝 RECEIVED TEXT', clipboardContent.text);
         Clipboard.setData(ClipboardData(text: clipboardContent.text));
@@ -692,6 +632,11 @@ class WebRTCService {
         
         // Show clipboard receive success notification for text
         _notificationService.showClipboardReceiveSuccess(_peerId ?? 'Unknown Device', isFile: false);
+        
+        // Notify UI about received text
+        if (onClipboardReceived != null) {
+          onClipboardReceived!('text', clipboardContent.text, _peerId ?? 'Unknown Device');
+        }
       }
     } catch (e) {
       _log('❌ ERROR PROCESSING RECEIVED DATA', e.toString());
@@ -780,28 +725,8 @@ class WebRTCService {
     try {
       _log('🎯 createOffer CALLED', peerId);
       
-      // If a send is in progress, queue this new share instead of aborting
-      if (_isSending) {
-        _log('⏳ SEND IN PROGRESS, QUEUEING NEW OUTGOING SHARE');
-        try {
-          final clipboardContent = await _fileTransferService.getClipboardContent();
-          if (!clipboardContent.isFiles && clipboardContent.text.isEmpty) {
-            _log('❌ NO CLIPBOARD CONTENT TO QUEUE');
-            return;
-          }
-          _outgoingQueue.add(_OutgoingItem(peerId, clipboardContent));
-          _log('📦 QUEUED OUTGOING SHARE', {
-            'queueLength': _outgoingQueue.length,
-            'type': clipboardContent.isFiles ? 'files' : 'text'
-          });
-          
-          // Send queued transfer notification to requester instead of showing locally
-          await _sendQueuedTransferNotification(clipboardContent, peerId);
-        } catch (e) {
-          _log('❌ ERROR READING CLIPBOARD FOR QUEUE', e.toString());
-        }
-        return;
-      }
+      // Note: Queue management is now handled by the requesting client
+      // The sender always responds immediately if available
 
       // Reset connection state for clean start of this send
       await _resetConnection();
@@ -811,11 +736,10 @@ class WebRTCService {
         return;
       }
       
-      // Set peer ID if provided or prepared
-      final targetPeer = _preparedPeerId ?? peerId;
-      if (targetPeer != null) {
-        _peerId = targetPeer;
-        _log('🎯 CREATING OFFER FOR PEER', targetPeer);
+      // Set peer ID if provided
+      if (peerId != null) {
+        _peerId = peerId;
+        _log('🎯 CREATING OFFER FOR PEER', peerId);
       }
       
       // Determine content to send: either prepared dequeued content or read clipboard now
@@ -848,7 +772,6 @@ class WebRTCService {
           _currentTransferContent = _pendingClipboardContent; // Track current transfer for notifications
         }
         _preparedOutgoingContent = null;
-        _preparedPeerId = null;
       }
       
       // Create data channel with proper configuration for large file transfers
@@ -1189,6 +1112,11 @@ class WebRTCService {
       for (final fileInfo in incomingFiles) {
         _notificationService.showFileDownloadProgress(0, fileInfo.name);
         // Don't set lastNotificationTime here - let the first progress notification show immediately
+        
+        // Notify UI about download start
+        if (onDownloadProgress != null) {
+          onDownloadProgress!(fileInfo.name, 0.0);
+        }
       }
       return true;
     } catch (e) {
@@ -1236,6 +1164,11 @@ class WebRTCService {
             // Only update the timer when we actually display a notification
             incoming.lastNotificationTime = now;
           }
+        }
+        
+        // Always notify UI about progress updates (not throttled like notifications)
+        if (onDownloadProgress != null) {
+          onDownloadProgress!(incoming.name, progressInt / 100.0);
         }
       }
 
@@ -1319,6 +1252,11 @@ class WebRTCService {
       for (final f in session.files) {
         _notificationService.showFileDownloadComplete(f.name);
       }
+      
+      // Notify UI about download completion
+      if (onDownloadComplete != null) {
+        onDownloadComplete!();
+      }
 
       // ACK for 'end' is sent immediately upon receiving 'end' mode to unblock sender
     } catch (e) {
@@ -1380,8 +1318,4 @@ class _IncomingFile {
   });
 }
 
-class _OutgoingItem {
-  final String? peerId;
-  final ClipboardContent content;
-  _OutgoingItem(this.peerId, this.content);
-}
+
