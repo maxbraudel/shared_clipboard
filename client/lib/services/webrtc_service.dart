@@ -705,6 +705,12 @@ class WebRTCService {
     _remoteDescriptionSet = false;
   }
 
+  // Create offer for incoming requests - bypasses queue to allow concurrent requests
+  Future<void> createOfferForRequest(String? peerId) async {
+    _log('🎯 createOfferForRequest CALLED (BYPASSING QUEUE)', peerId);
+    await _createOfferInternal(peerId, isRequest: true);
+  }
+
   Future<void> createOffer(String? peerId) async {
     try {
       _log('🎯 createOffer CALLED', peerId);
@@ -728,7 +734,17 @@ class WebRTCService {
         }
         return;
       }
+      
+      await _createOfferInternal(peerId, isRequest: false);
+    } catch (e, stackTrace) {
+      _log('❌ ERROR IN createOffer', e.toString());
+      _log('❌ STACK TRACE', stackTrace.toString());
+      rethrow;
+    }
+  }
 
+  Future<void> _createOfferInternal(String? peerId, {required bool isRequest}) async {
+    try {
       // Reset connection state for clean start of this send
       await _resetConnection();
       
@@ -769,7 +785,8 @@ class WebRTCService {
         _log('❌ ERROR READING CLIPBOARD', e.toString());
       } finally {
         // Mark sending started if we have content; clear prepared flags
-        if (_pendingClipboardContent != null) {
+        // For requests, don't set _isSending to allow concurrent requests
+        if (_pendingClipboardContent != null && !isRequest) {
           _isSending = true;
         }
         _preparedOutgoingContent = null;
@@ -816,10 +833,16 @@ class WebRTCService {
         });
       }
       
-      _log('✅ createOffer COMPLETED SUCCESSFULLY');
-    } catch (e) {
-      _log('❌ CRITICAL ERROR in createOffer', e.toString());
-      _log('❌ STACK TRACE', e.toString());
+      _log('✅ createOfferInternal COMPLETED SUCCESSFULLY');
+    } catch (e, stackTrace) {
+      _log('❌ CRITICAL ERROR in createOfferInternal', e.toString());
+      _log('❌ STACK TRACE', stackTrace.toString());
+      // Reset _isSending on error if this wasn't a request
+      if (!isRequest) {
+        _isSending = false;
+        _startNextSendIfAny();
+      }
+      rethrow;
     }
   }
 
