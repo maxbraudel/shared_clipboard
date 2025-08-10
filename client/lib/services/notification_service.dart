@@ -140,13 +140,27 @@ class NotificationService {
   }
 
   // Show file download complete notification
-  Future<void> showFileDownloadComplete(String fileName, String deviceName) async {
+  Future<void> showFileDownloadComplete(String fileName) async {
     if (!_isInitialized) await init();
     
-    const title = "Download Complete";
-    final message = "$fileName successfully downloaded from $deviceName";
+    const title = "File Download Complete";
+    final message = "Successfully downloaded: $fileName";
     
-    _log('✅ SHOWING FILE DOWNLOAD COMPLETE', '$fileName from $deviceName');
+    _log('📥 SHOWING FILE DOWNLOAD COMPLETE', fileName);
+    await _showNotification(title, message);
+  }
+
+  // Show queued transfer notification
+  Future<void> showTransferQueued(String queuedFileName, String currentFileName) async {
+    if (!_isInitialized) await init();
+    
+    const title = "Transfer Queued";
+    final message = "Download of '$queuedFileName' will start after current transfer of '$currentFileName' completes";
+    
+    _log('⏳ SHOWING TRANSFER QUEUED NOTIFICATION', {
+      'queued': queuedFileName,
+      'current': currentFileName
+    });
     await _showNotification(title, message);
   }
 

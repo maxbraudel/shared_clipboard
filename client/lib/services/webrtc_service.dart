@@ -46,6 +46,7 @@ class WebRTCService {
   bool _isSending = false;
   ClipboardContent? _preparedOutgoingContent; // used by createOffer to skip re-reading clipboard
   String? _preparedPeerId; // used when dequeuing to preserve target peer
+  ClipboardContent? _currentTransferContent; // track current transfer for notifications
   
   // Callback to send signals back to socket service
   Function(String to, dynamic signal)? onSignalGenerated;
@@ -60,6 +61,33 @@ class WebRTCService {
       _logger.i(message);
     }
 
+  }
+
+  // Helper method to show queued transfer notification
+  Future<void> _showQueuedTransferNotification(ClipboardContent queuedContent) async {
+    try {
+      // Get current transfer info
+      String currentFileName = 'Unknown';
+      String queuedFileName = 'Unknown';
+      
+      if (_currentTransferContent != null) {
+        if (_currentTransferContent!.isFiles && _currentTransferContent!.files.isNotEmpty) {
+          currentFileName = _currentTransferContent!.files.first.name;
+        } else if (!_currentTransferContent!.isFiles) {
+          currentFileName = 'text content';
+        }
+      }
+      
+      if (queuedContent.isFiles && queuedContent.files.isNotEmpty) {
+        queuedFileName = queuedContent.files.first.name;
+      } else if (!queuedContent.isFiles) {
+        queuedFileName = 'text content';
+      }
+      
+      await _notificationService.showTransferQueued(queuedFileName, currentFileName);
+    } catch (e) {
+      _log('❌ ERROR SHOWING QUEUED TRANSFER NOTIFICATION', e.toString());
+    }
   }
   void _startNextSendIfAny() {
     if (_isSending) return; // already busy
@@ -81,6 +109,7 @@ class WebRTCService {
         _log('❌ ERROR STARTING NEXT SEND', e.toString());
         // Try next in queue if available
         _isSending = false;
+        _currentTransferContent = null; // Clear current transfer tracking
         _startNextSendIfAny();
       }
     }();
@@ -270,6 +299,7 @@ class WebRTCService {
       _ackWaiters.remove(endAckKey);
       // Current send session finished; drain queue
       _isSending = false;
+      _currentTransferContent = null; // Clear current transfer tracking
       _startNextSendIfAny();
     }
   }
@@ -546,10 +576,12 @@ class WebRTCService {
           _log('✅ FILES STREAMED SUCCESSFULLY');
           _pendingClipboardContent = null;
           _isSending = false;
+          _currentTransferContent = null; // Clear current transfer tracking
           _startNextSendIfAny();
         }).catchError((e) {
           _log('❌ ERROR STREAMING FILES', e.toString());
           _isSending = false;
+          _currentTransferContent = null; // Clear current transfer tracking
           _startNextSendIfAny();
         });
       } else {
@@ -559,10 +591,12 @@ class WebRTCService {
           _log('✅ CLIPBOARD CONTENT SENT SUCCESSFULLY');
           _pendingClipboardContent = null;
           _isSending = false;
+          _currentTransferContent = null; // Clear current transfer tracking
           _startNextSendIfAny();
         }).catchError((e) {
           _log('❌ ERROR SENDING CLIPBOARD CONTENT', e.toString());
           _isSending = false;
+          _currentTransferContent = null; // Clear current transfer tracking
           _startNextSendIfAny();
         });
       }
@@ -725,6 +759,7 @@ class WebRTCService {
     _isInitialized = false;
     _pendingCandidates.clear();
     _remoteDescriptionSet = false;
+    _currentTransferContent = null; // Clear current transfer tracking
   }
 
   Future<void> createOffer(String? peerId) async {
@@ -745,6 +780,9 @@ class WebRTCService {
             'queueLength': _outgoingQueue.length,
             'type': clipboardContent.isFiles ? 'files' : 'text'
           });
+          
+          // Show queued transfer notification
+          await _showQueuedTransferNotification(clipboardContent);
         } catch (e) {
           _log('❌ ERROR READING CLIPBOARD FOR QUEUE', e.toString());
         }
@@ -793,6 +831,7 @@ class WebRTCService {
         // Mark sending started if we have content; clear prepared flags
         if (_pendingClipboardContent != null) {
           _isSending = true;
+          _currentTransferContent = _pendingClipboardContent; // Track current transfer for notifications
         }
         _preparedOutgoingContent = null;
         _preparedPeerId = null;
