@@ -156,20 +156,8 @@ class WebRTCService {
         }
       }
       
-      // Final ACK check to ensure all chunks are processed
-      if (chunkCount % 100 != 0) {
-        _log('⏳ WAITING FOR FINAL ACK');
-        _ackCompleter = Completer<void>();
-        try {
-          await _ackCompleter!.future.timeout(const Duration(seconds: 30));
-          _log('✅ FINAL ACK RECEIVED');
-        } catch (e) {
-          _log('❌ FINAL ACK TIMEOUT, ABORTING TRANSFER', e.toString());
-          throw Exception('Final ACK timeout');
-        } finally {
-          _ackCompleter = null;
-        }
-      }
+      // Note: Do not wait for an extra ACK here; the receiver sends ACKs every 100 chunks
+      // and will ACK upon file_end. We proceed to file_end immediately to avoid timeouts.
 
       _log('✅ FINISHED SENDING FILE', {
         'file': f.name,
