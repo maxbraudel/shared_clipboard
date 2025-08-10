@@ -12,12 +12,16 @@ import 'package:shared_clipboard/core/logger.dart';
 
 
 class WebRTCService {
+  // Legacy single connection (for backward compatibility)
   RTCPeerConnection? _peerConnection;
   RTCDataChannel? _dataChannel;
   String? _peerId;
   bool _isInitialized = false;
   ClipboardContent? _pendingClipboardContent; // store structured content to allow streaming
   bool _isResetting = false; // Prevent multiple resets
+  
+  // Simple concurrent transfer management
+  bool _hasActiveDownloads = false;
   
   final FileTransferService _fileTransferService = FileTransferService();
   final NotificationService _notificationService = NotificationService();
@@ -747,36 +751,32 @@ class WebRTCService {
 
   Future<void> _createOfferInternal(String? peerId, {required bool isRequest}) async {
     try {
-      // Check if we can reuse existing connection to same peer
-      if (_peerConnection != null && _dataChannel != null && 
-          _peerId == peerId && _dataChannel!.state == RTCDataChannelState.RTCDataChannelOpen) {
-        _log('🔄 REUSING EXISTING CONNECTION FOR CONCURRENT TRANSFER', peerId);
-        // Use existing connection - just send the content directly without resetting
-        await _sendContentOnExistingConnection();
-        return;
-      }
-      
-      // Check if we have active transfers that would be interrupted by connection reset
+      // STRICT BLOCKING: Never reset connection during active transfers
       final hasActiveTransfers = _fileSessions.isNotEmpty || _isSending;
       
       if (hasActiveTransfers) {
-        _log('⚠️ ACTIVE TRANSFERS DETECTED, QUEUING TO AVOID INTERRUPTION');
+        _log('🚫 BLOCKING NEW TRANSFER - ACTIVE TRANSFERS IN PROGRESS');
+        _log('📊 ACTIVE STATE', {
+          'fileSessions': _fileSessions.length,
+          'isSending': _isSending,
+          'requestType': isRequest ? 'request' : 'proactive'
+        });
+        
+        // Always queue - no exceptions
         final clipboardContent = await _fileTransferService.getClipboardContent();
         if (!clipboardContent.isFiles && clipboardContent.text.isEmpty) {
           _log('❌ NO CLIPBOARD CONTENT TO QUEUE');
           return;
         }
         _outgoingQueue.add(_OutgoingItem(peerId, clipboardContent));
-        _log('📦 QUEUED TO AVOID INTERRUPTING ACTIVE TRANSFERS', {
+        _log('📦 QUEUED TO PROTECT ACTIVE TRANSFERS', {
           'queueLength': _outgoingQueue.length,
-          'type': clipboardContent.isFiles ? 'files' : 'text',
-          'activeSessions': _fileSessions.length,
-          'isSending': _isSending
+          'type': clipboardContent.isFiles ? 'files' : 'text'
         });
         return;
       }
       
-      // Only reset connection if no active transfers and different peer or no connection
+      // Only proceed if no active transfers
       await _resetConnection();
       
       if (_peerConnection == null) {
