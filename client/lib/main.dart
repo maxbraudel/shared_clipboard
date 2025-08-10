@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
 import 'package:shared_clipboard/ui/home_page.dart';
 import 'package:shared_clipboard/services/tray_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
@@ -12,11 +13,12 @@ void main() async {
   await windowManager.ensureInitialized();
   
   // Configure window options but don't show yet
-  WindowOptions windowOptions = const WindowOptions(
-    size: Size(1000, 700),
-    minimumSize: Size(700, 700),
+  final bgColor = Platform.isWindows ? const Color(0xFFF3F3F3) : Colors.white;
+  WindowOptions windowOptions = WindowOptions(
+    size: const Size(1000, 700),
+    minimumSize: const Size(700, 700),
     center: true,
-    backgroundColor: Colors.white,
+    backgroundColor: bgColor,
     skipTaskbar: true,
     titleBarStyle: TitleBarStyle.normal,
   );
@@ -71,10 +73,12 @@ class _BackgroundAppState extends State<BackgroundApp> with WindowListener {
 
   @override
   Widget build(BuildContext context) {
+    final bgColor = Platform.isWindows ? const Color(0xFFF3F3F3) : Colors.white;
     return MaterialApp(
       title: 'Shared Clipboard',
       theme: ThemeData(
         primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: bgColor,
       ),
       home: const HomePage(),
       debugShowCheckedModeBanner: false,
