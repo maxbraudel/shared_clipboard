@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'dart:io' show Platform;
+import 'package:flutter/services.dart';
 import 'package:shared_clipboard/ui/home_page.dart';
 import 'package:shared_clipboard/services/tray_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
@@ -8,6 +8,15 @@ import 'package:window_manager/window_manager.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // hotkey_manager does not require explicit ensureInitialized on desktop
+  
+  // Set system UI overlay style for dark navigation buttons on light background
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark, // Dark icons on light background
+    statusBarBrightness: Brightness.light, // Light status bar
+    systemNavigationBarColor: Colors.white,
+    systemNavigationBarIconBrightness: Brightness.dark,
+  ));
   
   // Initialize window manager
   await windowManager.ensureInitialized();
@@ -26,14 +35,6 @@ void main() async {
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setPreventClose(true);
     await windowManager.setSkipTaskbar(true);
-    
-    // On Windows, set title bar color to ensure navigation buttons are visible
-    if (Platform.isWindows) {
-      await windowManager.setTitleBarStyle(TitleBarStyle.normal);
-      // Set a light gray title bar color so dark buttons are visible
-      await windowManager.setBackgroundColor(Colors.grey[100]!);
-    }
-    
     // Keep the window hidden on startup explicitly
     await windowManager.hide();
   });
