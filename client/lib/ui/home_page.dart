@@ -10,6 +10,47 @@ import 'package:shared_clipboard/services/notification_service.dart';
 import 'package:shared_clipboard/core/logger.dart';
 // ignore_for_file: library_private_types_in_public_api
 
+// Enum for clipboard request status
+enum ClipboardRequestStatus {
+  sendingRequest,
+  waitingForResponse,
+  waitingForDownloadToComplete,
+  waitingForUserLocation,
+  downloading,
+  processing
+}
+
+// Class to track detailed clipboard request information
+class ClipboardRequest {
+  final String deviceName;
+  ClipboardRequestStatus status;
+  final DateTime createdAt;
+  String? additionalInfo;
+
+  ClipboardRequest({
+    required this.deviceName,
+    required this.status,
+    String? additionalInfo,
+  }) : createdAt = DateTime.now(), additionalInfo = additionalInfo;
+
+  String get statusMessage {
+    switch (status) {
+      case ClipboardRequestStatus.sendingRequest:
+        return 'Sending clipboard request to the network';
+      case ClipboardRequestStatus.waitingForResponse:
+        return 'Waiting for response from $deviceName';
+      case ClipboardRequestStatus.waitingForDownloadToComplete:
+        return 'Waiting for a download to complete';
+      case ClipboardRequestStatus.waitingForUserLocation:
+        return 'Waiting for user to choose a download location';
+      case ClipboardRequestStatus.downloading:
+        return additionalInfo != null ? 'Downloading $additionalInfo' : 'Downloading file';
+      case ClipboardRequestStatus.processing:
+        return 'Processing received content';
+    }
+  }
+}
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -35,7 +76,7 @@ class _HomePageState extends State<HomePage> {
   String? _lastRetrievedType; // 'file' or 'text'
   String? _lastRetrievedContent; // file name or first 30 chars of text
   String? _lastRetrievedOrigin; // sender client name
-  final List<String> _pendingRequests = []; // queued clipboard requests
+  final List<ClipboardRequest> _pendingRequests = []; // queued clipboard requests with detailed status
   bool _isDownloading = false;
   double _downloadProgress = 0.0;
   String? _currentDownloadFileName;
@@ -68,15 +109,31 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void _addPendingRequest(String request) {
+  void _addPendingRequest(String deviceName, ClipboardRequestStatus status, {String? additionalInfo}) {
     setState(() {
-      _pendingRequests.add(request);
+      _pendingRequests.add(ClipboardRequest(
+        deviceName: deviceName,
+        status: status,
+        additionalInfo: additionalInfo,
+      ));
     });
   }
 
-  void _removePendingRequest(String request) {
+  void _removePendingRequest(String deviceName) {
     setState(() {
-      _pendingRequests.remove(request);
+      _pendingRequests.removeWhere((request) => request.deviceName == deviceName);
+    });
+  }
+
+  void _updatePendingRequestStatus(String deviceName, ClipboardRequestStatus status, {String? additionalInfo}) {
+    setState(() {
+      final requestIndex = _pendingRequests.indexWhere((request) => request.deviceName == deviceName);
+      if (requestIndex != -1) {
+        _pendingRequests[requestIndex].status = status;
+        if (additionalInfo != null) {
+          _pendingRequests[requestIndex].additionalInfo = additionalInfo;
+        }
+      }
     });
   }
 
@@ -101,6 +158,12 @@ class _HomePageState extends State<HomePage> {
     _webrtcService.onClipboardReceived = (String type, String content, String origin) {
       _logger.i('Clipboard received callback: $type from $origin');
       
+      // Update status to processing before clearing
+      if (_pendingRequests.isNotEmpty) {
+        final deviceName = _pendingRequests.first.deviceName;
+        _updatePendingRequestStatus(deviceName, ClipboardRequestStatus.processing);
+      }
+      
       // Clear any pending requests (since we successfully received content)
       setState(() {
         _pendingRequests.clear();
@@ -120,6 +183,12 @@ class _HomePageState extends State<HomePage> {
     _webrtcService.onDownloadProgress = (String fileName, double progress) {
       _logger.i('Download progress callback: $fileName at ${(progress * 100).toInt()}%');
       _updateDownloadProgress(fileName, progress);
+      
+      // Update pending request status to show downloading with file name
+      if (_pendingRequests.isNotEmpty) {
+        final deviceName = _pendingRequests.first.deviceName;
+        _updatePendingRequestStatus(deviceName, ClipboardRequestStatus.downloading, additionalInfo: fileName);
+      }
     };
     
     // Set up callback for download completion
@@ -132,6 +201,58 @@ class _HomePageState extends State<HomePage> {
         _isRequestingClipboard = false;
       });
       _processNextQueuedRequest();
+    };
+    
+    // Set up callback for when no clipboard content is available
+    _webrtcService.onNoContentAvailable = (String origin) {
+      _logger.i('No content available callback from: $origin');
+      
+      // Clear pending requests since no content is available
+      setState(() {
+        _pendingRequests.clear();
+        _isRequestingClipboard = false;
+      });
+      
+      // Show notification to user with clean message
+      _notificationService.showClipboardReceiveFailure('No device is ready to share a clipboard');
+      
+      // Process next queued request if any
+      _processNextQueuedRequest();
+      
+      _logger.i('UI state cleared due to no content available');
+    };
+    
+    // Set up callback for when waiting for user to choose download location
+    _webrtcService.onWaitingForUserLocation = (String fileName) {
+      _logger.i('Waiting for user location callback for file: $fileName');
+      
+      // Update pending request status to show waiting for user location
+      if (_pendingRequests.isNotEmpty) {
+        final deviceName = _pendingRequests.first.deviceName;
+        _updatePendingRequestStatus(deviceName, ClipboardRequestStatus.waitingForUserLocation, additionalInfo: fileName);
+      }
+    };
+    
+    // Set up callback for when download fails or is cancelled
+    _webrtcService.onDownloadFailed = (String reason) {
+      _logger.i('Download failed callback: $reason');
+      
+      // Clear pending requests since download failed
+      setState(() {
+        _pendingRequests.clear();
+        _isRequestingClipboard = false;
+        _isDownloading = false;
+        _downloadProgress = 0.0;
+        _currentDownloadFileName = null;
+      });
+      
+      // Show notification about the failure
+      _notificationService.showClipboardReceiveFailure('Download failed: $reason');
+      
+      // Process next queued request if any
+      _processNextQueuedRequest();
+      
+      _logger.i('UI state cleared due to download failure');
     };
     
     _logger.i('WebRTC callbacks setup completed');
@@ -344,17 +465,44 @@ class _HomePageState extends State<HomePage> {
             
             // Categories
             Expanded(
-              child: ListView(
+              child: Column(
                 children: [
+                  // Connected devices section (full width)
                   _buildConnectedDevicesSection(),
                   const SizedBox(height: 16),
-                  _buildSharedClipboardSection(),
-                  const SizedBox(height: 16),
-                  _buildRetrievedClipboardSection(),
-                  const SizedBox(height: 16),
-                  _buildPendingRequestsSection(),
-                  const SizedBox(height: 16),
-                  _buildCurrentDownloadSection(),
+                  
+                  // Grid layout for clipboard sections
+                  Expanded(
+                    child: Row(
+                      children: [
+                        // Left column
+                        Expanded(
+                          child: Column(
+                            children: [
+                              // Top left: Shared Clipboard
+                              Expanded(child: _buildSharedClipboardSection()),
+                              const SizedBox(height: 16),
+                              // Bottom left: Retrieved Clipboard
+                              Expanded(child: _buildRetrievedClipboardSection()),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // Right column
+                        Expanded(
+                          child: Column(
+                            children: [
+                              // Top right: Pending Clipboard Requests
+                              Expanded(child: _buildPendingRequestsSection()),
+                              const SizedBox(height: 16),
+                              // Bottom right: Current Download
+                              Expanded(child: _buildCurrentDownloadSection()),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -445,7 +593,7 @@ class _HomePageState extends State<HomePage> {
     if (_isRequestingClipboard || _isDownloading) {
       _logger.i('Already downloading/requesting, queueing request locally');
       _requestQueue.add('Clipboard request from $deviceName');
-      _addPendingRequest('Clipboard request from $deviceName (queued)');
+      _addPendingRequest(deviceName, ClipboardRequestStatus.waitingForDownloadToComplete);
       
       // Show queued notification
       _notificationService.showTransferQueued('clipboard content', _currentDownloadFileName ?? 'current transfer');
@@ -462,16 +610,20 @@ class _HomePageState extends State<HomePage> {
     try {
       _isRequestingClipboard = true;
       
+      // Add pending request with "sending request" status
+      _addPendingRequest(deviceName, ClipboardRequestStatus.sendingRequest);
+      
       _socketService.sendRequestShare();
       _logger.i('Clipboard request sent successfully');
       
-      // Add pending request to UI state
-      _addPendingRequest('Clipboard request from $deviceName');
+      // Update status to waiting for response
+      _updatePendingRequestStatus(deviceName, ClipboardRequestStatus.waitingForResponse);
       
     } catch (e) {
       _logger.e('Error requesting clipboard', e);
       _notificationService.showClipboardReceiveFailure(e.toString());
       _isRequestingClipboard = false;
+      _removePendingRequest(deviceName);
     }
   }
   
@@ -722,10 +874,10 @@ class _HomePageState extends State<HomePage> {
                 ListTile(
                   leading: const Icon(Icons.hourglass_empty, color: Colors.orange),
                   title: Text(
-                    request,
+                    request.deviceName,
                     style: const TextStyle(fontSize: 14),
                   ),
-                  subtitle: const Text('Waiting for current transfer to complete'),
+                  subtitle: Text(request.statusMessage),
                 )
               ).toList(),
             )

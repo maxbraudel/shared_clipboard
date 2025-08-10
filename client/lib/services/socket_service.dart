@@ -170,6 +170,20 @@ class SocketService {
         return;
       }
       
+      // Handle no-content-available notification
+      if (data['signal']['type'] == 'no-content-available') {
+        _log('❌ RECEIVED NO CONTENT AVAILABLE NOTIFICATION', {
+          'from': data['from'],
+          'message': data['signal']['message']
+        });
+        
+        // Notify WebRTC service about no content available
+        if (_webrtcService.onNoContentAvailable != null) {
+          _webrtcService.onNoContentAvailable!(data['from'] ?? 'Unknown Device');
+        }
+        return;
+      }
+      
       if (data['signal']['type'] == 'offer') {
         await _webrtcService.handleOffer(data['signal'], data['from']);
       } else if (data['signal']['type'] == 'answer') {
@@ -251,6 +265,17 @@ class SocketService {
 
     socket.on('share-available', (data) {
       _log('🚀 SHARE AVAILABLE', data);
+    });
+
+    // Handle no-sharer-available from server
+    socket.on('no-sharer-available', (data) {
+      _log('❌ NO SHARER AVAILABLE', data);
+      
+      // Notify WebRTC service about no sharer available (similar to no content available)
+      if (_webrtcService.onNoContentAvailable != null) {
+        final message = data is Map ? data['message'] ?? 'No device available to share' : 'No device available to share';
+        _webrtcService.onNoContentAvailable!(message);
+      }
     });
 
     // Handle hello messages from new clients

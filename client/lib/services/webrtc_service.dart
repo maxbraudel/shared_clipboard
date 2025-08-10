@@ -50,6 +50,9 @@ class WebRTCService {
   Function(String type, String content, String origin)? onClipboardReceived;
   Function(String fileName, double progress)? onDownloadProgress;
   Function()? onDownloadComplete;
+  Function(String origin)? onNoContentAvailable;
+  Function(String fileName)? onWaitingForUserLocation;
+  Function(String reason)? onDownloadFailed;
   
   // Callback to send signals back to socket service
   Function(String to, dynamic signal)? onSignalGenerated;
@@ -66,7 +69,25 @@ class WebRTCService {
 
   }
 
-
+  // Helper method to send "no content available" signal to requester
+  Future<void> _sendNoContentAvailableSignal(String? requesterId) async {
+    if (requesterId == null || onSignalGenerated == null) return;
+    
+    try {
+      // Send no content available message to requester via socket
+      final noContentMessage = {
+        'type': 'no-content-available',
+        'message': 'No clipboard content available to share'
+      };
+      
+      onSignalGenerated!(requesterId, noContentMessage);
+      _log('📤 SENT NO CONTENT AVAILABLE SIGNAL TO REQUESTER', {
+        'requesterId': requesterId
+      });
+    } catch (e) {
+      _log('❌ ERROR SENDING NO CONTENT AVAILABLE SIGNAL', e.toString());
+    }
+  }
 
   // Streaming files protocol (proto v2)
   Future<void> _sendFilesStreaming(ClipboardContent content) async {
@@ -711,14 +732,24 @@ class WebRTCService {
   }
 
   void _forceCleanup() {
+    _log('🧹 FORCE CLEANUP');
+    
+    // Check if we were in the middle of a download and notify UI
+    if (_fileSessions.isNotEmpty && onDownloadFailed != null) {
+      onDownloadFailed!('Connection interrupted during download');
+    }
+    
+    _isSending = false;
+    _pendingClipboardContent = null;
+    _currentTransferContent = null;
+    _preparedOutgoingContent = null;
+    _fileSessions.clear();
     _dataChannel = null;
     _peerConnection = null;
-    _pendingClipboardContent = null;
     _peerId = null;
     _isInitialized = false;
     _pendingCandidates.clear();
     _remoteDescriptionSet = false;
-    _currentTransferContent = null; // Clear current transfer tracking
   }
 
   Future<void> createOffer(String? peerId) async {
@@ -761,6 +792,9 @@ class WebRTCService {
             _pendingClipboardContent = clipboardContent; // will serialize at send
           } else {
             _log('❌ NO CLIPBOARD CONTENT TO SHARE');
+            // Send "no content available" signal to requesting client
+            await _sendNoContentAvailableSignal(peerId);
+            return; // Don't proceed with WebRTC connection setup
           }
         }
       } catch (e) {
@@ -1072,6 +1106,12 @@ class WebRTCService {
       String? sessionDir;
       for (final meta in filesMeta) {
         final name = (meta['name'] as String?) ?? 'file';
+        
+        // Notify UI that we're waiting for user to choose download location
+        if (onWaitingForUserLocation != null) {
+          onWaitingForUserLocation!(name);
+        }
+        
         String? savePath = await FilePicker.platform.saveFile(
           dialogTitle: 'Save incoming file',
           fileName: name,
@@ -1079,6 +1119,12 @@ class WebRTCService {
 
         if (savePath == null || savePath.isEmpty) {
           _log('🚫 USER CANCELLED SAVE DIALOG');
+          
+          // Notify UI about download failure due to user cancellation
+          if (onDownloadFailed != null) {
+            onDownloadFailed!('User cancelled save dialog');
+          }
+          
           // Clean up any files that were already created for this session
           for (final created in incomingFiles) {
             await created.sink.close();
@@ -1168,7 +1214,7 @@ class WebRTCService {
         
         // Always notify UI about progress updates (not throttled like notifications)
         if (onDownloadProgress != null) {
-          onDownloadProgress!(incoming.name, progressInt / 100.0);
+          onDownloadProgress!(incoming.name, progressInt.toDouble());
         }
       }
 
@@ -1180,6 +1226,11 @@ class WebRTCService {
       }
     } catch (e) {
       _log('❌ ERROR WRITING FILE CHUNK', {'sessionId': sessionId, 'index': fileIndex, 'error': e.toString()});
+      
+      // Notify UI about download failure due to file write error
+      if (onDownloadFailed != null) {
+        onDownloadFailed!('File write error: ${e.toString()}');
+      }
     }
   }
 
