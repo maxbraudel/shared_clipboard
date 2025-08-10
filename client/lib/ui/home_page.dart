@@ -8,6 +8,7 @@ import 'package:shared_clipboard/services/webrtc_service.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
 import 'package:shared_clipboard/core/logger.dart';
+import 'package:window_manager/window_manager.dart';
 // ignore_for_file: library_private_types_in_public_api
 
 // Enum for clipboard request status
@@ -275,6 +276,7 @@ class _HomePageState extends State<HomePage> {
       final isMac = Platform.isMacOS;
       final shareModifiers = isMac ? [HotKeyModifier.meta] : [HotKeyModifier.control];
       final requestModifiers = isMac ? [HotKeyModifier.meta] : [HotKeyModifier.control];
+      final toggleModifiers = isMac ? [HotKeyModifier.meta] : [HotKeyModifier.control];
 
       // Share clipboard: Cmd+F12 (macOS) or Ctrl+F12 (Windows)
       await hotKeyManager.register(
@@ -302,9 +304,38 @@ class _HomePageState extends State<HomePage> {
         },
       );
 
+      // Toggle window: Cmd+F10 (macOS) or Ctrl+F10 (Windows)
+      await hotKeyManager.register(
+        HotKey(
+          key: LogicalKeyboardKey.f10,
+          modifiers: toggleModifiers,
+          scope: HotKeyScope.system,
+        ),
+        keyDownHandler: (hotKey) async {
+          _logger.d('Hotkey TOGGLE WINDOW triggered');
+          await _toggleWindowVisibility();
+        },
+      );
+
       _logger.i('Global hotkeys registered');
     } catch (e, st) {
       _logger.e('Failed to register global hotkeys', e, st);
+    }
+  }
+
+  Future<void> _toggleWindowVisibility() async {
+    try {
+      final isVisible = await windowManager.isVisible();
+      if (isVisible) {
+        _logger.d('Toggling window: hide');
+        await windowManager.hide();
+      } else {
+        _logger.d('Toggling window: show');
+        await windowManager.show();
+        await windowManager.focus();
+      }
+    } catch (e, st) {
+      _logger.e('Failed to toggle window visibility', e, st);
     }
   }
 
