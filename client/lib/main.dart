@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
 import 'package:shared_clipboard/ui/home_page.dart';
 import 'package:shared_clipboard/services/tray_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
@@ -16,7 +17,7 @@ void main() async {
     size: Size(1000, 700),
     minimumSize: Size(700, 700),
     center: true,
-    backgroundColor: Colors.black,
+    backgroundColor: Colors.white,
     skipTaskbar: true,
     titleBarStyle: TitleBarStyle.normal,
   );
@@ -25,6 +26,14 @@ void main() async {
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setPreventClose(true);
     await windowManager.setSkipTaskbar(true);
+    
+    // On Windows, set title bar color to ensure navigation buttons are visible
+    if (Platform.isWindows) {
+      await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+      // Set a light gray title bar color so dark buttons are visible
+      await windowManager.setBackgroundColor(Colors.grey[100]!);
+    }
+    
     // Keep the window hidden on startup explicitly
     await windowManager.hide();
   });
