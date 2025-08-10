@@ -33,6 +33,7 @@ class WebRTCService {
   final Map<String, int> _rxReceivedBytes = {};
   final Map<String, int> _rxTotalBytes = {};
   Completer<void>? _bufferLowCompleter;
+  bool _saveDialogOpen = false; // gate to avoid blocking multiple sessions
 
   // Streaming files state (proto v2)
   final Map<String, _FileSession> _fileSessions = {};
@@ -1094,34 +1095,69 @@ class WebRTCService {
       }
 
       String? sessionDir;
-      for (final meta in filesMeta) {
-        final name = (meta['name'] as String?) ?? 'file';
-        String? savePath = await FilePicker.platform.saveFile(
-          dialogTitle: 'Save incoming file',
-          fileName: name,
-        );
 
-        if (savePath == null || savePath.isEmpty) {
-          _log('🚫 USER CANCELLED SAVE DIALOG');
-          // Clean up any files that were already created for this session
-          for (final created in incomingFiles) {
-            await created.sink.close();
-            await created.file.delete();
-          }
-          return false;
+      // If a save dialog is already open (user is picking for another session),
+      // auto-save this session to a default directory so we don't block.
+      if (_saveDialogOpen) {
+        final home = Platform.environment['HOME'] ?? Directory.current.path;
+        final base = Directory('$home/Downloads/SharedClipboard/$sessionId');
+        await base.create(recursive: true);
+        sessionDir = base.path;
+        for (final meta in filesMeta) {
+          final name = (meta['name'] as String?) ?? 'file';
+          final file = File('${base.path}/$name');
+          await file.parent.create(recursive: true);
+          final sink = file.openWrite();
+          incomingFiles.add(_IncomingFile(
+            name: name,
+            size: (meta['size'] as num?)?.toInt() ?? 0,
+            checksum: (meta['checksum'] as String?) ?? '',
+            file: file,
+            sink: sink,
+          ));
         }
-
-        sessionDir ??= File(savePath).parent.path;
-        await File(savePath).parent.create(recursive: true);
-        final file = File(savePath);
-        final sink = file.openWrite();
-        incomingFiles.add(_IncomingFile(
-          name: name,
-          size: (meta['size'] as num?)?.toInt() ?? 0,
-          checksum: (meta['checksum'] as String?) ?? '',
-          file: file,
-          sink: sink,
-        ));
+        _log('📂 AUTO-SAVING SESSION (dialog busy)', {
+          'sessionId': sessionId,
+          'dir': sessionDir,
+          'files': filesMeta.length
+        });
+        _notificationService.showClipboardReceiveSuccess(
+          _peerId ?? 'Unknown Device',
+          isFile: true,
+        );
+      } else {
+        // Normal flow: prompt user for save location(s)
+        try {
+          _saveDialogOpen = true;
+          for (final meta in filesMeta) {
+            final name = (meta['name'] as String?) ?? 'file';
+            String? savePath = await FilePicker.platform.saveFile(
+              dialogTitle: 'Save incoming file',
+              fileName: name,
+            );
+            if (savePath == null || savePath.isEmpty) {
+              _log('🚫 USER CANCELLED SAVE DIALOG');
+              for (final created in incomingFiles) {
+                await created.sink.close();
+                await created.file.delete();
+              }
+              return false;
+            }
+            sessionDir ??= File(savePath).parent.path;
+            await File(savePath).parent.create(recursive: true);
+            final file = File(savePath);
+            final sink = file.openWrite();
+            incomingFiles.add(_IncomingFile(
+              name: name,
+              size: (meta['size'] as num?)?.toInt() ?? 0,
+              checksum: (meta['checksum'] as String?) ?? '',
+              file: file,
+              sink: sink,
+            ));
+          }
+        } finally {
+          _saveDialogOpen = false;
+        }
       }
 
       final session = _FileSession(sessionDir!, incomingFiles);
