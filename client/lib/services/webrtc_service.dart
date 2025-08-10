@@ -178,6 +178,17 @@ class WebRTCService {
         'finalBufferedAmount': _dataChannel!.bufferedAmount
       });
       
+      // Ensure buffered data is flushed before signaling file end
+      while ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
+        _log('⏳ WAITING BUFFER TO DRAIN BEFORE FILE_END', {'buffered': _dataChannel!.bufferedAmount});
+        _bufferLowCompleter = Completer<void>();
+        try {
+          await _bufferLowCompleter!.future;
+        } catch (_) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      }
+
       // End of this file
       final fileEnd = jsonEncode({
         '__sc_proto': 2,
@@ -187,6 +198,30 @@ class WebRTCService {
         'fileIndex': i,
       });
       _dataChannel!.send(RTCDataChannelMessage(fileEnd));
+
+      // Wait for ACK confirming receiver processed file end
+      _log('⏳ WAITING FOR FILE_END ACK');
+      _ackCompleter = Completer<void>();
+      try {
+        await _ackCompleter!.future.timeout(const Duration(seconds: 30));
+        _log('✅ FILE_END ACK RECEIVED');
+      } catch (e) {
+        _log('❌ FILE_END ACK TIMEOUT', e.toString());
+        throw Exception('File end ACK timeout');
+      } finally {
+        _ackCompleter = null;
+      }
+    }
+
+    // Ensure buffer drains before session end
+    while ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
+      _log('⏳ WAITING BUFFER TO DRAIN BEFORE SESSION END', {'buffered': _dataChannel!.bufferedAmount});
+      _bufferLowCompleter = Completer<void>();
+      try {
+        await _bufferLowCompleter!.future;
+      } catch (_) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
     }
 
     // End session
@@ -197,6 +232,19 @@ class WebRTCService {
       'sessionId': sessionId,
     });
     _dataChannel!.send(RTCDataChannelMessage(endEnv));
+
+    // Wait for final ACK after receiver finalizes
+    _log('⏳ WAITING FOR SESSION END ACK');
+    _ackCompleter = Completer<void>();
+    try {
+      await _ackCompleter!.future.timeout(const Duration(seconds: 30));
+      _log('✅ SESSION END ACK RECEIVED');
+    } catch (e) {
+      _log('❌ SESSION END ACK TIMEOUT', e.toString());
+      throw Exception('Session end ACK timeout');
+    } finally {
+      _ackCompleter = null;
+    }
   }
 
   Future<void> init() async {
@@ -1116,6 +1164,10 @@ class WebRTCService {
       for (final f in session.files) {
         _notificationService.showFileDownloadComplete(f.name, _peerId ?? 'Unknown Device');
       }
+
+      // Send final ACK to confirm session end to sender
+      _log('📬 SENDING SESSION END ACK');
+      _dataChannel?.send(RTCDataChannelMessage('{"__sc_proto":2,"kind":"ack"}'));
     } catch (e) {
       _log('❌ ERROR FINALIZING FILE SESSION', e.toString());
     }
