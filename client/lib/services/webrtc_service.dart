@@ -60,6 +60,7 @@ class WebRTCService {
       _logger.i(message);
     }
 
+  }
   void _startNextSendIfAny() {
     if (_isSending) return; // already busy
     if (_outgoingQueue.isEmpty) return;
@@ -83,7 +84,6 @@ class WebRTCService {
         _startNextSendIfAny();
       }
     }();
-  }
   }
 
   // Streaming files protocol (proto v2)
@@ -1325,4 +1325,10 @@ class _IncomingFile {
     required this.file,
     required this.sink,
   });
+}
+
+class _OutgoingItem {
+  final String? peerId;
+  final ClipboardContent content;
+  _OutgoingItem(this.peerId, this.content);
 }
