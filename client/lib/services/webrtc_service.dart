@@ -12,17 +12,12 @@ import 'package:shared_clipboard/core/logger.dart';
 
 
 class WebRTCService {
-  // Legacy single connection (for backward compatibility)
   RTCPeerConnection? _peerConnection;
   RTCDataChannel? _dataChannel;
   String? _peerId;
   bool _isInitialized = false;
   ClipboardContent? _pendingClipboardContent; // store structured content to allow streaming
   bool _isResetting = false; // Prevent multiple resets
-  
-  // Simple concurrent transfer management
-  bool _hasActiveDownloads = false;
-  
   final FileTransferService _fileTransferService = FileTransferService();
   final NotificationService _notificationService = NotificationService();
   final AppLogger _logger = logTag('WEBRTC');
@@ -49,7 +44,6 @@ class WebRTCService {
   // Outgoing send queue and state
   final Queue<_OutgoingItem> _outgoingQueue = Queue<_OutgoingItem>();
   bool _isSending = false;
-  bool _isReceiving = false; // Track if we have active incoming transfers
   ClipboardContent? _preparedOutgoingContent; // used by createOffer to skip re-reading clipboard
   String? _preparedPeerId; // used when dequeuing to preserve target peer
   
@@ -413,11 +407,33 @@ class WebRTCService {
             final mode = env['mode'] as String?;
             final sessionId = env['sessionId'] as String?;
             if (mode == 'start' && sessionId != null) {
-              // Ask user for directory immediately - each session runs concurrently
+              // Ask user for directory immediately
               final filesMeta = (env['files'] as List).cast<Map<String, dynamic>>();
-              _log('🔰 START FILE STREAM SESSION (CONCURRENT)', {'sessionId': sessionId, 'files': filesMeta.length});
-              // Launch concurrent session preparation without blocking other sessions
-              _handleIncomingFileSession(sessionId, filesMeta);
+              _log('🔰 START FILE STREAM SESSION', {'sessionId': sessionId, 'files': filesMeta.length});
+              () async {
+                final prepared = await _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
+                if (!prepared) {
+                  // Inform sender we cancelled so it can abort immediately
+                  final cancelEnv = jsonEncode({
+                    '__sc_proto': 2,
+                    'kind': 'files',
+                    'mode': 'cancel',
+                    'sessionId': sessionId,
+                  });
+                  _dataChannel?.send(RTCDataChannelMessage(cancelEnv));
+                  _log('🚫 RECEIVER CANCELLED BEFORE READY', sessionId);
+                  return;
+                }
+                // Notify sender we are ready to receive chunks
+                final readyEnv = jsonEncode({
+                  '__sc_proto': 2,
+                  'kind': 'files',
+                  'mode': 'ready',
+                  'sessionId': sessionId,
+                });
+                _dataChannel?.send(RTCDataChannelMessage(readyEnv));
+                _log('📨 SENT RECEIVER READY', sessionId);
+              }();
               return;
             }
             if (mode == 'ready' && sessionId != null) {
@@ -641,17 +657,6 @@ class WebRTCService {
       return;
     }
     
-    // CRITICAL: Global protection against resetting during active transfers
-    final hasActiveTransfers = _fileSessions.isNotEmpty || _isSending;
-    if (hasActiveTransfers) {
-      _log('🚫 BLOCKING CONNECTION RESET - ACTIVE TRANSFERS DETECTED');
-      _log('📊 ACTIVE STATE', {
-        'fileSessions': _fileSessions.length,
-        'isSending': _isSending
-      });
-      throw StateError('Cannot reset connection during active transfers');
-    }
-    
     _isResetting = true;
     _log('🔄 RESETTING PEER CONNECTION FOR NEW SHARE');
     
@@ -722,12 +727,6 @@ class WebRTCService {
     _remoteDescriptionSet = false;
   }
 
-  // Create offer for incoming requests - bypasses queue to allow concurrent requests
-  Future<void> createOfferForRequest(String? peerId) async {
-    _log('🎯 createOfferForRequest CALLED (BYPASSING QUEUE)', peerId);
-    await _createOfferInternal(peerId, isRequest: true);
-  }
-
   Future<void> createOffer(String? peerId) async {
     try {
       _log('🎯 createOffer CALLED', peerId);
@@ -751,43 +750,8 @@ class WebRTCService {
         }
         return;
       }
-      
-      await _createOfferInternal(peerId, isRequest: false);
-    } catch (e, stackTrace) {
-      _log('❌ ERROR IN createOffer', e.toString());
-      _log('❌ STACK TRACE', stackTrace.toString());
-      rethrow;
-    }
-  }
 
-  Future<void> _createOfferInternal(String? peerId, {required bool isRequest}) async {
-    try {
-      // STRICT BLOCKING: Never reset connection during active transfers
-      final hasActiveTransfers = _fileSessions.isNotEmpty || _isSending;
-      
-      if (hasActiveTransfers) {
-        _log('🚫 BLOCKING NEW TRANSFER - ACTIVE TRANSFERS IN PROGRESS');
-        _log('📊 ACTIVE STATE', {
-          'fileSessions': _fileSessions.length,
-          'isSending': _isSending,
-          'requestType': isRequest ? 'request' : 'proactive'
-        });
-        
-        // Always queue - no exceptions
-        final clipboardContent = await _fileTransferService.getClipboardContent();
-        if (!clipboardContent.isFiles && clipboardContent.text.isEmpty) {
-          _log('❌ NO CLIPBOARD CONTENT TO QUEUE');
-          return;
-        }
-        _outgoingQueue.add(_OutgoingItem(peerId, clipboardContent));
-        _log('📦 QUEUED TO PROTECT ACTIVE TRANSFERS', {
-          'queueLength': _outgoingQueue.length,
-          'type': clipboardContent.isFiles ? 'files' : 'text'
-        });
-        return;
-      }
-      
-      // Only proceed if no active transfers
+      // Reset connection state for clean start of this send
       await _resetConnection();
       
       if (_peerConnection == null) {
@@ -827,8 +791,7 @@ class WebRTCService {
         _log('❌ ERROR READING CLIPBOARD', e.toString());
       } finally {
         // Mark sending started if we have content; clear prepared flags
-        // For requests, don't set _isSending to allow concurrent requests
-        if (_pendingClipboardContent != null && !isRequest) {
+        if (_pendingClipboardContent != null) {
           _isSending = true;
         }
         _preparedOutgoingContent = null;
@@ -875,76 +838,16 @@ class WebRTCService {
         });
       }
       
-      _log('✅ createOfferInternal COMPLETED SUCCESSFULLY');
-    } catch (e, stackTrace) {
-      _log('❌ CRITICAL ERROR in createOfferInternal', e.toString());
-      _log('❌ STACK TRACE', stackTrace.toString());
-      // Reset _isSending on error if this wasn't a request
-      if (!isRequest) {
-        _isSending = false;
-        _startNextSendIfAny();
-      }
-      rethrow;
-    }
-  }
-
-  // Send content on existing connection without resetting - enables concurrent transfers
-  Future<void> _sendContentOnExistingConnection() async {
-    try {
-      _log('🔄 SENDING CONTENT ON EXISTING CONNECTION');
-      
-      // Read clipboard content
-      ClipboardContent clipboardContent;
-      if (_preparedOutgoingContent != null) {
-        clipboardContent = _preparedOutgoingContent!;
-        _log('📦 USING PREPARED OUTGOING CONTENT');
-      } else {
-        clipboardContent = await _fileTransferService.getClipboardContent();
-        _log('📋 READ CLIPBOARD FOR EXISTING CONNECTION');
-      }
-      
-      if (clipboardContent.isFiles) {
-        _log('📁 SENDING FILES ON EXISTING CONNECTION', '${clipboardContent.files.length} files');
-        await _sendFilesStreaming(clipboardContent);
-      } else if (clipboardContent.text.isNotEmpty) {
-        _log('📝 SENDING TEXT ON EXISTING CONNECTION');
-        final payload = jsonEncode({
-          '__sc_proto': 1,
-          'kind': 'text',
-          'text': clipboardContent.text,
-        });
-        await _sendLargeMessage(payload);
-      } else {
-        _log('❌ NO CONTENT TO SEND ON EXISTING CONNECTION');
-      }
-      
-      // Clear prepared content
-      _preparedOutgoingContent = null;
-      _preparedPeerId = null;
-      
-    } catch (e, stackTrace) {
-      _log('❌ ERROR SENDING CONTENT ON EXISTING CONNECTION', e.toString());
-      _log('❌ STACK TRACE', stackTrace.toString());
-      rethrow;
+      _log('✅ createOffer COMPLETED SUCCESSFULLY');
+    } catch (e) {
+      _log('❌ CRITICAL ERROR in createOffer', e.toString());
+      _log('❌ STACK TRACE', e.toString());
     }
   }
 
   Future<void> handleOffer(dynamic offer, String from) async {
     _log('📥 HANDLING OFFER FROM', from);
     _log('🔍 CURRENT STATE - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
-    
-    // CRITICAL: Check for active transfers before resetting connection
-    final hasActiveTransfers = _fileSessions.isNotEmpty || _isSending;
-    if (hasActiveTransfers) {
-      _log('🚫 REJECTING OFFER - ACTIVE TRANSFERS IN PROGRESS');
-      _log('📊 ACTIVE STATE', {
-        'fileSessions': _fileSessions.length,
-        'isSending': _isSending,
-        'from': from
-      });
-      // TODO: Send rejection signal back to sender
-      return;
-    }
     
     try {
       // Reset connection state for clean start
@@ -1179,48 +1082,6 @@ class WebRTCService {
   }
 
   // ===== Streaming file receiver helpers (proto v2) =====
-  
-  // Handle incoming file session concurrently - each session prompts user independently
-  void _handleIncomingFileSession(String sessionId, List<Map<String, dynamic>> filesMeta) {
-    // Launch async without blocking other sessions
-    () async {
-      try {
-        final prepared = await _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
-        if (!prepared) {
-          // Inform sender we cancelled so it can abort immediately
-          final cancelEnv = jsonEncode({
-            '__sc_proto': 2,
-            'kind': 'files',
-            'mode': 'cancel',
-            'sessionId': sessionId,
-          });
-          _dataChannel?.send(RTCDataChannelMessage(cancelEnv));
-          _log('🚫 RECEIVER CANCELLED BEFORE READY', sessionId);
-          return;
-        }
-        // Notify sender we are ready to receive chunks
-        final readyEnv = jsonEncode({
-          '__sc_proto': 2,
-          'kind': 'files',
-          'mode': 'ready',
-          'sessionId': sessionId,
-        });
-        _dataChannel?.send(RTCDataChannelMessage(readyEnv));
-        _log('📨 SENT RECEIVER READY', sessionId);
-      } catch (e) {
-        _log('❌ ERROR HANDLING INCOMING FILE SESSION', {'sessionId': sessionId, 'error': e.toString()});
-        // Send cancel to sender on any error
-        final cancelEnv = jsonEncode({
-          '__sc_proto': 2,
-          'kind': 'files',
-          'mode': 'cancel',
-          'sessionId': sessionId,
-        });
-        _dataChannel?.send(RTCDataChannelMessage(cancelEnv));
-      }
-    }();
-  }
-  
   // Returns true if files were prepared and we're ready to receive.
   // Returns false if the user cancelled any save dialog; in that case, the caller should send a 'cancel' control.
   Future<bool> _promptDirectoryAndPrepareFiles(
@@ -1471,5 +1332,3 @@ class _OutgoingItem {
   final ClipboardContent content;
   _OutgoingItem(this.peerId, this.content);
 }
-
-

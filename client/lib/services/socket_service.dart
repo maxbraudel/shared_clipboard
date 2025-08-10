@@ -127,13 +127,13 @@ class SocketService {
         });
         return;
       }
-      _log('📤 CREATING OFFER TO SEND CLIPBOARD TO REQUESTER (BYPASSING QUEUE)', requesterId);
+      _log('📤 CREATING OFFER TO SEND CLIPBOARD TO REQUESTER', requesterId);
       
       try {
-        await _webrtcService.createOfferForRequest(requesterId);
-        _log('✅ WEBRTC createOfferForRequest COMPLETED SUCCESSFULLY');
+        await _webrtcService.createOffer(requesterId);
+        _log('✅ WEBRTC createOffer COMPLETED SUCCESSFULLY');
       } catch (e, stackTrace) {
-        _log('❌ ERROR CALLING WEBRTC createOfferForRequest', e.toString());
+        _log('❌ ERROR CALLING WEBRTC createOffer', e.toString());
         _log('❌ STACK TRACE', stackTrace.toString());
       }
     });
