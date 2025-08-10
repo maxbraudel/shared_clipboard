@@ -641,6 +641,17 @@ class WebRTCService {
       return;
     }
     
+    // CRITICAL: Global protection against resetting during active transfers
+    final hasActiveTransfers = _fileSessions.isNotEmpty || _isSending;
+    if (hasActiveTransfers) {
+      _log('🚫 BLOCKING CONNECTION RESET - ACTIVE TRANSFERS DETECTED');
+      _log('📊 ACTIVE STATE', {
+        'fileSessions': _fileSessions.length,
+        'isSending': _isSending
+      });
+      throw StateError('Cannot reset connection during active transfers');
+    }
+    
     _isResetting = true;
     _log('🔄 RESETTING PEER CONNECTION FOR NEW SHARE');
     
@@ -921,6 +932,19 @@ class WebRTCService {
   Future<void> handleOffer(dynamic offer, String from) async {
     _log('📥 HANDLING OFFER FROM', from);
     _log('🔍 CURRENT STATE - Remote desc set: $_remoteDescriptionSet, Queue size: ${_pendingCandidates.length}');
+    
+    // CRITICAL: Check for active transfers before resetting connection
+    final hasActiveTransfers = _fileSessions.isNotEmpty || _isSending;
+    if (hasActiveTransfers) {
+      _log('🚫 REJECTING OFFER - ACTIVE TRANSFERS IN PROGRESS');
+      _log('📊 ACTIVE STATE', {
+        'fileSessions': _fileSessions.length,
+        'isSending': _isSending,
+        'from': from
+      });
+      // TODO: Send rejection signal back to sender
+      return;
+    }
     
     try {
       // Reset connection state for clean start
