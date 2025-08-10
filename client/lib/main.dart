@@ -13,7 +13,8 @@ void main() async {
   
   // Configure window options but don't show yet
   WindowOptions windowOptions = const WindowOptions(
-    size: Size(800, 600),
+    size: Size(1000, 700),
+    minimumSize: Size(700, 700),
     center: true,
     backgroundColor: Colors.white,
     skipTaskbar: true,

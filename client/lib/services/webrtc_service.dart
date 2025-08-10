@@ -9,6 +9,7 @@ import 'package:shared_clipboard/services/file_transfer_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_clipboard/core/logger.dart';
+import 'package:window_manager/window_manager.dart';
 
 
 class WebRTCService {
@@ -1112,10 +1113,25 @@ class WebRTCService {
           onWaitingForUserLocation!(name);
         }
         
-        String? savePath = await FilePicker.platform.saveFile(
-          dialogTitle: 'Save incoming file',
-          fileName: name,
-        );
+        // Ensure window stays visible during and after file picker
+        String? savePath;
+        try {
+          savePath = await FilePicker.platform.saveFile(
+            dialogTitle: 'Save incoming file',
+            fileName: name,
+          );
+          
+          // Re-show window after file picker closes (in case it was hidden by macOS)
+          try {
+            await windowManager.show();
+            await windowManager.focus();
+          } catch (e) {
+            _log('⚠️ Could not restore window focus after file picker: $e');
+          }
+        } catch (e) {
+          _log('❌ Error opening file picker: $e');
+          savePath = null;
+        }
 
         if (savePath == null || savePath.isEmpty) {
           _log('🚫 USER CANCELLED SAVE DIALOG');
@@ -1302,6 +1318,12 @@ class WebRTCService {
       // Show download completion notifications for each file
       for (final f in session.files) {
         _notificationService.showFileDownloadComplete(f.name);
+      }
+      
+      // Notify UI about received files for Last Retrieved Clipboard section
+      if (onClipboardReceived != null && session.files.isNotEmpty) {
+        final fileNames = session.files.map((f) => f.name).join(', ');
+        onClipboardReceived!('file', fileNames, _peerId ?? 'Unknown Device');
       }
       
       // Notify UI about download completion

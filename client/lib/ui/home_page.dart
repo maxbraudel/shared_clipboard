@@ -14,7 +14,7 @@ import 'package:shared_clipboard/core/logger.dart';
 enum ClipboardRequestStatus {
   sendingRequest,
   waitingForResponse,
-  waitingForDownloadToComplete,
+  waitingForRequestToComplete,
   waitingForUserLocation,
   downloading,
   processing
@@ -39,8 +39,8 @@ class ClipboardRequest {
         return 'Sending clipboard request to the network';
       case ClipboardRequestStatus.waitingForResponse:
         return 'Waiting for response from $deviceName';
-      case ClipboardRequestStatus.waitingForDownloadToComplete:
-        return 'Waiting for a download to complete';
+      case ClipboardRequestStatus.waitingForRequestToComplete:
+        return 'Waiting for a request to complete';
       case ClipboardRequestStatus.waitingForUserLocation:
         return 'Waiting for user to choose a download location';
       case ClipboardRequestStatus.downloading:
@@ -121,7 +121,10 @@ class _HomePageState extends State<HomePage> {
 
   void _removePendingRequest(String deviceName) {
     setState(() {
-      _pendingRequests.removeWhere((request) => request.deviceName == deviceName);
+      final idx = _pendingRequests.indexWhere((request) => request.deviceName == deviceName);
+      if (idx != -1) {
+        _pendingRequests.removeAt(idx); // remove only the first matching request
+      }
     });
   }
 
@@ -164,9 +167,11 @@ class _HomePageState extends State<HomePage> {
         _updatePendingRequestStatus(deviceName, ClipboardRequestStatus.processing);
       }
       
-      // Clear any pending requests (since we successfully received content)
+      // Remove only the active (first) pending request; keep queued ones
       setState(() {
-        _pendingRequests.clear();
+        if (_pendingRequests.isNotEmpty) {
+          _pendingRequests.removeAt(0);
+        }
         _isRequestingClipboard = false; // Clear requesting state
       });
       
@@ -207,9 +212,11 @@ class _HomePageState extends State<HomePage> {
     _webrtcService.onNoContentAvailable = (String origin) {
       _logger.i('No content available callback from: $origin');
       
-      // Clear pending requests since no content is available
+      // Remove only the active (first) pending request since no content is available
       setState(() {
-        _pendingRequests.clear();
+        if (_pendingRequests.isNotEmpty) {
+          _pendingRequests.removeAt(0);
+        }
         _isRequestingClipboard = false;
       });
       
@@ -237,9 +244,11 @@ class _HomePageState extends State<HomePage> {
     _webrtcService.onDownloadFailed = (String reason) {
       _logger.i('Download failed callback: $reason');
       
-      // Clear pending requests since download failed
+      // Remove only the active (first) pending request since download failed/cancelled
       setState(() {
-        _pendingRequests.clear();
+        if (_pendingRequests.isNotEmpty) {
+          _pendingRequests.removeAt(0);
+        }
         _isRequestingClipboard = false;
         _isDownloading = false;
         _downloadProgress = 0.0;
@@ -419,7 +428,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Shared Clipboard'),
+        title: const Text('Last Shared Clipboard'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
@@ -465,41 +474,35 @@ class _HomePageState extends State<HomePage> {
             
             // Categories
             Expanded(
-              child: Column(
+              child: Row(
                 children: [
-                  // Connected devices section (full width)
-                  _buildConnectedDevicesSection(),
-                  const SizedBox(height: 16),
-                  
-                  // Grid layout for clipboard sections
+                  // Left column: Shared, Retrieved, and Current Download stacked vertically
                   Expanded(
-                    child: Row(
+                    flex: 1,
+                    child: Column(
                       children: [
-                        // Left column
-                        Expanded(
-                          child: Column(
-                            children: [
-                              // Top left: Shared Clipboard
-                              Expanded(child: _buildSharedClipboardSection()),
-                              const SizedBox(height: 16),
-                              // Bottom left: Retrieved Clipboard
-                              Expanded(child: _buildRetrievedClipboardSection()),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        // Right column
-                        Expanded(
-                          child: Column(
-                            children: [
-                              // Top right: Pending Clipboard Requests
-                              Expanded(child: _buildPendingRequestsSection()),
-                              const SizedBox(height: 16),
-                              // Bottom right: Current Download
-                              Expanded(child: _buildCurrentDownloadSection()),
-                            ],
-                          ),
-                        ),
+                        // Shared Clipboard
+                        Expanded(child: _buildSharedClipboardSection()),
+                        const SizedBox(height: 16),
+                        // Last Retrieved Clipboard
+                        Expanded(child: _buildRetrievedClipboardSection()),
+                        const SizedBox(height: 16),
+                        // Current Download
+                        Expanded(child: _buildCurrentDownloadSection()),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // Right column: Connected Devices and Pending Clipboard Requests
+                  Expanded(
+                    flex: 1,
+                    child: Column(
+                      children: [
+                        // Connected Devices (using category style)
+                        Expanded(child: _buildConnectedDevicesSection()),
+                        const SizedBox(height: 16),
+                        // Pending Clipboard Requests (with scroll)
+                        Expanded(child: _buildPendingRequestsSection()),
                       ],
                     ),
                   ),
@@ -593,7 +596,7 @@ class _HomePageState extends State<HomePage> {
     if (_isRequestingClipboard || _isDownloading) {
       _logger.i('Already downloading/requesting, queueing request locally');
       _requestQueue.add('Clipboard request from $deviceName');
-      _addPendingRequest(deviceName, ClipboardRequestStatus.waitingForDownloadToComplete);
+      _addPendingRequest(deviceName, ClipboardRequestStatus.waitingForRequestToComplete);
       
       // Show queued notification
       _notificationService.showTransferQueued('clipboard content', _currentDownloadFileName ?? 'current transfer');
@@ -610,8 +613,14 @@ class _HomePageState extends State<HomePage> {
     try {
       _isRequestingClipboard = true;
       
-      // Add pending request with "sending request" status
-      _addPendingRequest(deviceName, ClipboardRequestStatus.sendingRequest);
+      // If there's already a queued pending entry for this device, upgrade its status
+      final existingIdx = _pendingRequests.indexWhere((r) => r.deviceName == deviceName);
+      if (existingIdx != -1) {
+        _updatePendingRequestStatus(deviceName, ClipboardRequestStatus.sendingRequest);
+      } else {
+        // Otherwise add a new pending entry
+        _addPendingRequest(deviceName, ClipboardRequestStatus.sendingRequest);
+      }
       
       _socketService.sendRequestShare();
       _logger.i('Clipboard request sent successfully');
@@ -641,171 +650,96 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildConnectedDevicesSection() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.devices,
-                color: Colors.blue,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _isLoadingDevices 
-                    ? 'Connected Devices (discovering...)'
-                    : 'Connected Devices (${_connectedDevices.length})',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[800],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 15),
-          Container(
-            constraints: const BoxConstraints(
-              maxHeight: 200,
-              maxWidth: 400,
-            ),
-            child: _isLoadingDevices
-                ? Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue[200]!),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'Discovering devices...',
-                          style: TextStyle(
-                            color: Colors.blue[700],
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : _connectedDevices.isEmpty
-                    ? Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey[300]!),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              color: Colors.grey[500],
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'No devices connected',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                : Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey[300]!),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _connectedDevices.length,
-                      itemBuilder: (context, index) {
-                        final device = _connectedDevices[index];
-                        final connectedAt = device['connectedAt'] as DateTime;
-                        final duration = DateTime.now().difference(connectedAt);
-                        
-                        String durationText;
-                        if (duration.inMinutes < 1) {
-                          durationText = 'Just now';
-                        } else if (duration.inHours < 1) {
-                          durationText = '${duration.inMinutes}m ago';
-                        } else {
-                          durationText = '${duration.inHours}h ago';
-                        }
-                        
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: index % 2 == 0 ? Colors.grey[50] : Colors.white,
-                            border: index > 0 ? Border(top: BorderSide(color: Colors.grey[200]!)) : null,
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Colors.green,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      device['name'],
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w500,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    Text(
-                                      'ID: ${device['id']}',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Text(
-                                durationText,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[500],
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
+    return _buildCategorySection(
+      title: _isLoadingDevices 
+          ? 'Connected Devices (discovering...)'
+          : 'Connected Devices (${_connectedDevices.length})',
+      icon: Icons.devices,
+      iconColor: Colors.blue,
+      child: _isLoadingDevices
+          ? const Padding(
+              padding: EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
                     ),
                   ),
-          ),
-        ],
-      ),
+                  SizedBox(width: 12),
+                  Text(
+                    'Discovering devices...',
+                    style: TextStyle(
+                      color: Colors.blue,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : _connectedDevices.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'No devices connected',
+                    style: TextStyle(color: Colors.grey, fontSize: 14),
+                  ),
+                )
+              : Expanded(
+                  child: ListView.builder(
+                    itemCount: _connectedDevices.length,
+                    itemBuilder: (context, index) {
+                      final device = _connectedDevices[index];
+                      final connectedAt = device['connectedAt'] as DateTime;
+                      final duration = DateTime.now().difference(connectedAt);
+                      
+                      String durationText;
+                      if (duration.inMinutes < 1) {
+                        durationText = 'Just now';
+                      } else if (duration.inHours < 1) {
+                        durationText = '${duration.inMinutes}m ago';
+                      } else {
+                        durationText = '${duration.inHours}h ago';
+                      }
+                      
+                      return ListTile(
+                        leading: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: device['readyToShare'] == true ? Colors.green : Colors.orange,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        title: Text(
+                          device['name'] ?? 'Unknown Device',
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                        subtitle: Text('Connected $durationText'),
+                        trailing: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: device['readyToShare'] == true ? Colors.green[100] : Colors.orange[100],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            device['readyToShare'] == true ? 'Ready' : 'Busy',
+                            style: TextStyle(
+                              color: device['readyToShare'] == true ? Colors.green[700] : Colors.orange[700],
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
     );
   }
 
@@ -838,7 +772,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildRetrievedClipboardSection() {
     return _buildCategorySection(
-      title: 'Retrieved Clipboard',
+      title: 'Last Retrieved Clipboard',
       icon: Icons.download,
       iconColor: Colors.blue,
       child: _lastRetrievedContent != null
@@ -869,17 +803,21 @@ class _HomePageState extends State<HomePage> {
       icon: Icons.schedule,
       iconColor: Colors.orange,
       child: _pendingRequests.isNotEmpty
-          ? Column(
-              children: _pendingRequests.map((request) => 
-                ListTile(
-                  leading: const Icon(Icons.hourglass_empty, color: Colors.orange),
-                  title: Text(
-                    request.deviceName,
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  subtitle: Text(request.statusMessage),
-                )
-              ).toList(),
+          ? Expanded(
+              child: ListView.builder(
+                itemCount: _pendingRequests.length,
+                itemBuilder: (context, index) {
+                  final request = _pendingRequests[index];
+                  return ListTile(
+                    leading: const Icon(Icons.hourglass_empty, color: Colors.orange),
+                    title: Text(
+                      request.deviceName,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    subtitle: Text(request.statusMessage),
+                  );
+                },
+              ),
             )
           : const Padding(
               padding: EdgeInsets.all(16),
