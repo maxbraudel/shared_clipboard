@@ -749,7 +749,7 @@ class WebRTCService {
     try {
       // Check if we can reuse existing connection to same peer
       if (_peerConnection != null && _dataChannel != null && 
-          _peerId == peerId && _dataChannel!.state == RTCDataChannelState.RTCDataChannelStateOpen) {
+          _peerId == peerId && _dataChannel!.state == RTCDataChannelState.RTCDataChannelOpen) {
         _log('🔄 REUSING EXISTING CONNECTION FOR CONCURRENT TRANSFER', peerId);
         // Use existing connection - just send the content directly without resetting
         await _sendContentOnExistingConnection();
