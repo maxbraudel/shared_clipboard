@@ -1,5 +1,6 @@
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:shared_clipboard/services/webrtc_service.dart';
+import 'package:shared_clipboard/services/notification_service.dart';
 import 'dart:io';
 import 'package:shared_clipboard/core/logger.dart';
 
@@ -149,6 +150,23 @@ class SocketService {
           'from': data['from'],
           'ourId': socket.id,
         });
+        return;
+      }
+      
+      // Handle transfer-queued notification
+      if (data['signal']['type'] == 'transfer-queued') {
+        _log('⏳ RECEIVED TRANSFER QUEUED NOTIFICATION', {
+          'from': data['from'],
+          'current': data['signal']['currentFileName'],
+          'queued': data['signal']['queuedFileName']
+        });
+        
+        // Import and show notification on receiver side
+        final notificationService = NotificationService();
+        await notificationService.showTransferQueued(
+          data['signal']['queuedFileName'] ?? 'Unknown',
+          data['signal']['currentFileName'] ?? 'Unknown'
+        );
         return;
       }
       

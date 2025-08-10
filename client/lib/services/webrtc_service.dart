@@ -63,8 +63,10 @@ class WebRTCService {
 
   }
 
-  // Helper method to show queued transfer notification
-  Future<void> _showQueuedTransferNotification(ClipboardContent queuedContent) async {
+  // Helper method to send queued transfer notification to requester
+  Future<void> _sendQueuedTransferNotification(ClipboardContent queuedContent, String? requesterId) async {
+    if (requesterId == null || onSignalGenerated == null) return;
+    
     try {
       // Get current transfer info
       String currentFileName = 'Unknown';
@@ -84,9 +86,21 @@ class WebRTCService {
         queuedFileName = 'text content';
       }
       
-      await _notificationService.showTransferQueued(queuedFileName, currentFileName);
+      // Send queued notification message to requester via socket
+      final queuedMessage = {
+        'type': 'transfer-queued',
+        'currentFileName': currentFileName,
+        'queuedFileName': queuedFileName
+      };
+      
+      onSignalGenerated!(requesterId, queuedMessage);
+      _log('📤 SENT QUEUED TRANSFER NOTIFICATION TO REQUESTER', {
+        'requesterId': requesterId,
+        'current': currentFileName,
+        'queued': queuedFileName
+      });
     } catch (e) {
-      _log('❌ ERROR SHOWING QUEUED TRANSFER NOTIFICATION', e.toString());
+      _log('❌ ERROR SENDING QUEUED TRANSFER NOTIFICATION', e.toString());
     }
   }
   void _startNextSendIfAny() {
@@ -781,8 +795,8 @@ class WebRTCService {
             'type': clipboardContent.isFiles ? 'files' : 'text'
           });
           
-          // Show queued transfer notification
-          await _showQueuedTransferNotification(clipboardContent);
+          // Send queued transfer notification to requester instead of showing locally
+          await _sendQueuedTransferNotification(clipboardContent, peerId);
         } catch (e) {
           _log('❌ ERROR READING CLIPBOARD FOR QUEUE', e.toString());
         }
