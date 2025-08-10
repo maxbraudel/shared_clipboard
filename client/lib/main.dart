@@ -16,7 +16,7 @@ void main() async {
     size: Size(1000, 700),
     minimumSize: Size(700, 700),
     center: true,
-    backgroundColor: Colors.grey,
+    backgroundColor: Colors.black,
     skipTaskbar: true,
     titleBarStyle: TitleBarStyle.normal,
   );
