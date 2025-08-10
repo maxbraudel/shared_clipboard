@@ -18,6 +18,7 @@ class WebRTCService {
   bool _isInitialized = false;
   ClipboardContent? _pendingClipboardContent; // store structured content to allow streaming
   bool _isResetting = false; // Prevent multiple resets
+  
   final FileTransferService _fileTransferService = FileTransferService();
   final NotificationService _notificationService = NotificationService();
   final AppLogger _logger = logTag('WEBRTC');
@@ -44,6 +45,7 @@ class WebRTCService {
   // Outgoing send queue and state
   final Queue<_OutgoingItem> _outgoingQueue = Queue<_OutgoingItem>();
   bool _isSending = false;
+  bool _isReceiving = false; // Track if we have active incoming transfers
   ClipboardContent? _preparedOutgoingContent; // used by createOffer to skip re-reading clipboard
   String? _preparedPeerId; // used when dequeuing to preserve target peer
   
@@ -745,7 +747,36 @@ class WebRTCService {
 
   Future<void> _createOfferInternal(String? peerId, {required bool isRequest}) async {
     try {
-      // Reset connection state for clean start of this send
+      // Check if we can reuse existing connection to same peer
+      if (_peerConnection != null && _dataChannel != null && 
+          _peerId == peerId && _dataChannel!.state == RTCDataChannelState.RTCDataChannelStateOpen) {
+        _log('🔄 REUSING EXISTING CONNECTION FOR CONCURRENT TRANSFER', peerId);
+        // Use existing connection - just send the content directly without resetting
+        await _sendContentOnExistingConnection();
+        return;
+      }
+      
+      // Check if we have active transfers that would be interrupted by connection reset
+      final hasActiveTransfers = _fileSessions.isNotEmpty || _isSending;
+      
+      if (hasActiveTransfers) {
+        _log('⚠️ ACTIVE TRANSFERS DETECTED, QUEUING TO AVOID INTERRUPTION');
+        final clipboardContent = await _fileTransferService.getClipboardContent();
+        if (!clipboardContent.isFiles && clipboardContent.text.isEmpty) {
+          _log('❌ NO CLIPBOARD CONTENT TO QUEUE');
+          return;
+        }
+        _outgoingQueue.add(_OutgoingItem(peerId, clipboardContent));
+        _log('📦 QUEUED TO AVOID INTERRUPTING ACTIVE TRANSFERS', {
+          'queueLength': _outgoingQueue.length,
+          'type': clipboardContent.isFiles ? 'files' : 'text',
+          'activeSessions': _fileSessions.length,
+          'isSending': _isSending
+        });
+        return;
+      }
+      
+      // Only reset connection if no active transfers and different peer or no connection
       await _resetConnection();
       
       if (_peerConnection == null) {
@@ -842,6 +873,47 @@ class WebRTCService {
         _isSending = false;
         _startNextSendIfAny();
       }
+      rethrow;
+    }
+  }
+
+  // Send content on existing connection without resetting - enables concurrent transfers
+  Future<void> _sendContentOnExistingConnection() async {
+    try {
+      _log('🔄 SENDING CONTENT ON EXISTING CONNECTION');
+      
+      // Read clipboard content
+      ClipboardContent clipboardContent;
+      if (_preparedOutgoingContent != null) {
+        clipboardContent = _preparedOutgoingContent!;
+        _log('📦 USING PREPARED OUTGOING CONTENT');
+      } else {
+        clipboardContent = await _fileTransferService.getClipboardContent();
+        _log('📋 READ CLIPBOARD FOR EXISTING CONNECTION');
+      }
+      
+      if (clipboardContent.isFiles) {
+        _log('📁 SENDING FILES ON EXISTING CONNECTION', '${clipboardContent.files.length} files');
+        await _sendFilesStreaming(clipboardContent);
+      } else if (clipboardContent.text.isNotEmpty) {
+        _log('📝 SENDING TEXT ON EXISTING CONNECTION');
+        final payload = jsonEncode({
+          '__sc_proto': 1,
+          'kind': 'text',
+          'text': clipboardContent.text,
+        });
+        await _sendLargeMessage(payload);
+      } else {
+        _log('❌ NO CONTENT TO SEND ON EXISTING CONNECTION');
+      }
+      
+      // Clear prepared content
+      _preparedOutgoingContent = null;
+      _preparedPeerId = null;
+      
+    } catch (e, stackTrace) {
+      _log('❌ ERROR SENDING CONTENT ON EXISTING CONNECTION', e.toString());
+      _log('❌ STACK TRACE', stackTrace.toString());
       rethrow;
     }
   }
@@ -1375,3 +1447,5 @@ class _OutgoingItem {
   final ClipboardContent content;
   _OutgoingItem(this.peerId, this.content);
 }
+
+
