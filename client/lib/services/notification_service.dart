@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:windows_notification/windows_notification.dart';
 import 'package:windows_notification/notification_message.dart';
+import 'package:shared_clipboard/core/logger.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -15,14 +16,14 @@ class NotificationService {
   WindowsNotification? _windowsNotification;
   
   bool _isInitialized = false;
+  final AppLogger _logger = logTag('NOTIFICATION');
 
   // Helper function for timestamped logging
   void _log(String message, [dynamic data]) {
-    final timestamp = DateTime.now().toIso8601String();
     if (data != null) {
-      print('[$timestamp] NOTIFICATION: $message - $data');
+      _logger.i(message, data);
     } else {
-      print('[$timestamp] NOTIFICATION: $message');
+      _logger.i(message);
     }
   }
 
@@ -131,7 +132,7 @@ class NotificationService {
     // Only show at round values (0%, 10%, 20%, 30%... 90%)
     if (percentage % 10 != 0 || percentage >= 100) return;
     
-    final title = "Downloading File";
+    const title = "Downloading File";
     final message = "$fileName - $percentage% complete";
     
     _log('📊 SHOWING FILE DOWNLOAD PROGRESS', '$fileName - $percentage%');
@@ -156,7 +157,7 @@ class NotificationService {
     // Only show at round values (10%, 20%, 30%... 90%)
     if (percentage % 10 != 0 || percentage == 0 || percentage >= 100) return;
     
-    final title = "Uploading File";
+    const title = "Uploading File";
     final message = "$fileName - $percentage% complete";
     
     _log('📤 SHOWING FILE UPLOAD PROGRESS', '$fileName - $percentage%');

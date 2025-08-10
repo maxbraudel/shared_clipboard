@@ -1,17 +1,18 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_clipboard/core/logger.dart';
 
 class NativeFileClipboard {
   static const MethodChannel _channel = MethodChannel('native_file_clipboard');
+  static final AppLogger _logger = logTag('NATIVE_CLIP');
   
   // Helper function for timestamped logging
   static void _log(String message, [dynamic data]) {
-    final timestamp = DateTime.now().toIso8601String();
     if (data != null) {
-      print('[$timestamp] NATIVE_FILE_CLIPBOARD: $message - $data');
+      _logger.i(message, data);
     } else {
-      print('[$timestamp] NATIVE_FILE_CLIPBOARD: $message');
+      _logger.i(message);
     }
   }
 

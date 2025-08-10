@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:mime/mime.dart';
 import 'package:flutter/services.dart';
@@ -8,18 +7,19 @@ import 'package:file_picker/file_picker.dart';
 import 'package:shared_clipboard/services/windows_clipboard_debug.dart';
 import 'package:shared_clipboard/services/windows_file_clipboard.dart';
 import 'package:shared_clipboard/services/native_file_clipboard.dart';
+import 'package:shared_clipboard/core/logger.dart';
 // Removed native macOS pasteboard integration
 
 class FileTransferService {
-  static const int MAX_FILE_SIZE = 1000000 * 1024 * 1024; // 50MB limit for safety
+  static const int maxFileSize = 1000000 * 1024 * 1024; // 50MB limit for safety
+  final AppLogger _logger = logTag('FILE_TRANSFER');
   
   // Helper function for timestamped logging
   void _log(String message, [dynamic data]) {
-    final timestamp = DateTime.now().toIso8601String();
     if (data != null) {
-      print('[$timestamp] FILE_TRANSFER: $message - $data');
+      _logger.i(message, data);
     } else {
-      print('[$timestamp] FILE_TRANSFER: $message');
+      _logger.i(message);
     }
   }
 
@@ -195,7 +195,7 @@ class FileTransferService {
         }
         
         final stat = await file.stat();
-        if (stat.size > MAX_FILE_SIZE) {
+        if (stat.size > maxFileSize) {
           _log('⚠️ FILE TOO LARGE, SKIPPING', '$filePath (${stat.size} bytes)');
           continue;
         }
@@ -218,7 +218,7 @@ class FileTransferService {
           content: bytes,
         ));
         
-        _log('✅ FILE PROCESSED', '$fileName (${mimeType})');
+        _log('✅ FILE PROCESSED', '$fileName ($mimeType)');
       }
       
       if (files.isEmpty) {
@@ -261,15 +261,7 @@ class FileTransferService {
     }
   }
 
-  void _showFileReceivedMessage(int fileCount, String dirPath) {
-    print('\n🎉 FILES RECEIVED SUCCESSFULLY! 🎉');
-    print('📁 $fileCount file(s) saved to: $dirPath');
-    print('📋 CURRENT LIMITATION: File paths copied to clipboard as text');
-    print('💡 When you paste (Cmd+V), you\'ll see the file paths instead of files');
-    print('� To access files: Navigate to the paths shown when you paste');
-    print('🔮 GOAL: Enable direct file pasting (like copy/paste from Finder)');
-    print('');
-  }
+  // _showFileReceivedMessage removed (unused)
 
   // Serialize clipboard content for transfer
   String serializeClipboardContent(ClipboardContent content) {
@@ -351,7 +343,7 @@ class FileTransferService {
         }
         
         final stat = await file.stat();
-        if (stat.size > MAX_FILE_SIZE) {
+        if (stat.size > maxFileSize) {
           _log('⚠️ FILE TOO LARGE, SKIPPING', '${platformFile.name} (${stat.size} bytes)');
           continue;
         }
@@ -371,7 +363,7 @@ class FileTransferService {
           content: bytes,
         ));
         
-        _log('✅ SELECTED FILE PROCESSED', '${platformFile.name} (${mimeType})');
+        _log('✅ SELECTED FILE PROCESSED', '${platformFile.name} ($mimeType)');
       }
       
       if (files.isEmpty) {

@@ -7,6 +7,8 @@ import 'package:shared_clipboard/services/socket_service.dart';
 import 'package:shared_clipboard/services/webrtc_service.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
+import 'package:shared_clipboard/core/logger.dart';
+// ignore_for_file: library_private_types_in_public_api
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -21,9 +23,10 @@ class _HomePageState extends State<HomePage> {
   late WebRTCService _webrtcService;
   late FileTransferService _fileTransferService;
   final NotificationService _notificationService = NotificationService();
+  final AppLogger _logger = logTag('HOME');
   bool _isInitialized = false;
   bool _isLoadingDevices = true; // Track device discovery loading state
-  List<Map<String, dynamic>> _connectedDevices = [];
+  final List<Map<String, dynamic>> _connectedDevices = [];
   Timer? _updateTimer;
 
   // Helper function to truncate long text with ellipsis
@@ -51,7 +54,7 @@ class _HomePageState extends State<HomePage> {
           scope: HotKeyScope.system, // ensure system-wide
         ),
         keyDownHandler: (hotKey) async {
-          print('🔎 Hotkey SHARE triggered');
+          _logger.d('Hotkey SHARE triggered');
           _shareClipboard();
         },
       );
@@ -64,15 +67,14 @@ class _HomePageState extends State<HomePage> {
           scope: HotKeyScope.system,
         ),
         keyDownHandler: (hotKey) async {
-          print('🔎 Hotkey REQUEST triggered');
+          _logger.d('Hotkey REQUEST triggered');
           _requestClipboard();
         },
       );
 
-      print('✅ Global hotkeys registered');
+      _logger.i('Global hotkeys registered');
     } catch (e, st) {
-      print('❌ Failed to register global hotkeys: $e');
-      print(st);
+      _logger.e('Failed to register global hotkeys', e, st);
     }
   }
 
@@ -91,7 +93,7 @@ class _HomePageState extends State<HomePage> {
 
   void _initializeServices() async {
     try {
-      print('🚀 STARTING SERVICE INITIALIZATION');
+      _logger.i('Starting service initialization');
       
       // Initialize services
       _socketService = SocketService();
@@ -99,11 +101,11 @@ class _HomePageState extends State<HomePage> {
       _fileTransferService = FileTransferService();
       
       // Initialize WebRTC first
-      print('🔧 INITIALIZING WEBRTC SERVICE');
+      _logger.i('Initializing WebRTC service');
       _webrtcService.init();
       
       // Then initialize Socket service
-      print('🔧 INITIALIZING SOCKET SERVICE');
+      _logger.i('Initializing Socket service');
       _socketService.init(webrtcService: _webrtcService);
       
       // Set up device event callbacks
@@ -164,7 +166,7 @@ class _HomePageState extends State<HomePage> {
       });
       
       // Set a timeout to stop loading if no devices are discovered
-      Timer(Duration(seconds: 5), () {
+      Timer(const Duration(seconds: 5), () {
         if (mounted && _isLoadingDevices) {
           setState(() {
             _isLoadingDevices = false;
@@ -173,7 +175,7 @@ class _HomePageState extends State<HomePage> {
       });
       
       // Start timer to update connected devices durations
-      _updateTimer = Timer.periodic(Duration(minutes: 1), (timer) {
+      _updateTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
         if (mounted && _connectedDevices.isNotEmpty) {
           setState(() {
             // Trigger rebuild to update duration displays
@@ -181,12 +183,12 @@ class _HomePageState extends State<HomePage> {
         }
       });
       
-      print('✅ SERVICES INITIALIZED SUCCESSFULLY');
+      _logger.i('Services initialized successfully');
 
       // Register global hotkeys after services are ready
       await _registerGlobalHotkeys();
     } catch (e) {
-      print('❌ SERVICE INITIALIZATION ERROR: $e');
+      _logger.e('Service initialization error', e);
       setState(() {
         _status = 'Initialization failed: $e';
       });
@@ -269,21 +271,23 @@ class _HomePageState extends State<HomePage> {
     });
     
     try {
-      print('🔎 READING CLIPBOARD FOR SHARING');
+      _logger.i('Reading clipboard for sharing');
       
       // Use file transfer service to detect files or text
       final clipboardContent = await _fileTransferService.getClipboardContent();
       
       if (clipboardContent.isFiles && clipboardContent.files.isNotEmpty) {
         // Files detected in clipboard
-        print('📁 FILES DETECTED IN CLIPBOARD: ${clipboardContent.files.length} files');
-        print('📤 SENDING SHARE-READY TO SERVER (FILES)');
+        _logger.i('Files detected in clipboard', {'count': clipboardContent.files.length});
+        _logger.d('Sending share-ready to server (files)');
         _socketService.sendShareReady();
         setState(() {
           final fileNames = clipboardContent.files.map((f) => f.name).join(', ');
           _status = 'Ready to share ${clipboardContent.files.length} files: ${_truncateText(fileNames)}';
         });
-        print("📋 FILES READY TO SHARE: ${clipboardContent.files.map((f) => f.name).join(', ')}");
+        _logger.d('Files ready to share', {
+          'files': clipboardContent.files.map((f) => f.name).join(', '),
+        });
         
         // Show success notification for files
         final deviceNames = _connectedDevices.map((d) => d['name'] as String).join(', ');
@@ -292,13 +296,13 @@ class _HomePageState extends State<HomePage> {
         }
       } else if (clipboardContent.text.isNotEmpty) {
         // Regular text in clipboard
-        print('📝 TEXT DETECTED IN CLIPBOARD: "${clipboardContent.text}"');
-        print('📤 SENDING SHARE-READY TO SERVER (TEXT)');
+        _logger.i('Text detected in clipboard');
+        _logger.d('Sending share-ready to server (text)');
         _socketService.sendShareReady();
         setState(() {
           _status = 'Ready to share: "${_truncateText(clipboardContent.text)}"';
         });
-        print("📋 TEXT READY TO SHARE: ${clipboardContent.text}");
+        _logger.d('Text ready to share');
         
         // Show success notification for text
         final deviceNames = _connectedDevices.map((d) => d['name'] as String).join(', ');
@@ -309,14 +313,14 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           _status = 'No content in clipboard';
         });
-        print('❌ NO CONTENT IN CLIPBOARD');
+        _logger.w('No content in clipboard');
         _notificationService.showClipboardShareFailure('Clipboard is empty');
       }
     } catch (e) {
       setState(() {
         _status = 'Error reading clipboard: $e';
       });
-      print('❌ CLIPBOARD READ ERROR: $e');
+      _logger.e('Clipboard read error', e);
       _notificationService.showClipboardShareFailure(e.toString());
     }
   }
@@ -327,12 +331,12 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _status = 'Requesting clipboard...';
     });
-    print("📥 REQUESTING CLIPBOARD FROM SERVER");
+    _logger.i('Requesting clipboard from server');
     
     try {
       // Check if we have connected devices
       if (_connectedDevices.isEmpty) {
-        print('❌ No connected devices to request from');
+        _logger.w('No connected devices to request from');
         _notificationService.showClipboardReceiveFailure('No connected devices');
         setState(() {
           _status = 'No connected devices';
@@ -341,7 +345,7 @@ class _HomePageState extends State<HomePage> {
       }
       
       _socketService.sendRequestShare();
-      print('✅ Clipboard request sent successfully');
+      _logger.i('Clipboard request sent successfully');
       
       // Reset status after a delay if no response
       Future.delayed(const Duration(seconds: 5), () {
@@ -352,7 +356,7 @@ class _HomePageState extends State<HomePage> {
         }
       });
     } catch (e) {
-      print('❌ Error requesting clipboard: $e');
+      _logger.e('Error requesting clipboard', e);
       _notificationService.showClipboardReceiveFailure(e.toString());
       setState(() {
         _status = 'Error requesting clipboard';
@@ -368,7 +372,7 @@ class _HomePageState extends State<HomePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
+              const Icon(
                 Icons.devices,
                 color: Colors.blue,
                 size: 20,
@@ -388,7 +392,7 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 15),
           Container(
-            constraints: BoxConstraints(
+            constraints: const BoxConstraints(
               maxHeight: 200,
               maxWidth: 400,
             ),
@@ -403,7 +407,7 @@ class _HomePageState extends State<HomePage> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        SizedBox(
+                        const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
@@ -483,7 +487,7 @@ class _HomePageState extends State<HomePage> {
                               Container(
                                 width: 8,
                                 height: 8,
-                                decoration: BoxDecoration(
+                                decoration: const BoxDecoration(
                                   color: Colors.green,
                                   shape: BoxShape.circle,
                                 ),
@@ -495,7 +499,7 @@ class _HomePageState extends State<HomePage> {
                                   children: [
                                     Text(
                                       device['name'],
-                                      style: TextStyle(
+                                      style: const TextStyle(
                                         fontWeight: FontWeight.w500,
                                         fontSize: 14,
                                       ),

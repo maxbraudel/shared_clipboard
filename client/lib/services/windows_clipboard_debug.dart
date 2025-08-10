@@ -1,5 +1,7 @@
+// ignore_for_file: constant_identifier_names
 import 'dart:ffi';
 import 'dart:io';
+import 'package:shared_clipboard/core/logger.dart';
 
 // Windows API constants for clipboard formats
 const int CF_TEXT = 1;
@@ -7,14 +9,15 @@ const int CF_UNICODETEXT = 13;
 const int CF_HDROP = 15;
 
 class WindowsClipboardDebug {
+  static final AppLogger _logger = logTag('WIN_CLIP_DEBUG');
   static void investigateClipboard() {
     if (!Platform.isWindows) {
-      print('❌ This debug tool only works on Windows');
+      _logger.w('This debug tool only works on Windows');
       return;
     }
 
     try {
-      print('🔍 INVESTIGATING WINDOWS CLIPBOARD FORMATS');
+      _logger.i('Investigating Windows clipboard formats');
       
       // Load user32.dll for clipboard functions
       final user32 = DynamicLibrary.open('user32.dll');
@@ -26,36 +29,36 @@ class WindowsClipboardDebug {
       
       // Open clipboard
       if (openClipboard(0) == 0) {
-        print('❌ Failed to open clipboard');
+        _logger.e('Failed to open clipboard');
         return;
       }
       
-      print('📋 CHECKING KEY CLIPBOARD FORMATS:');
+      _logger.i('Checking key clipboard formats');
       
       // Check if text is available
       if (isClipboardFormatAvailable(CF_TEXT) != 0) {
-        print('✅ CF_TEXT (ASCII text) - AVAILABLE');
+        _logger.i('CF_TEXT (ASCII text) - AVAILABLE');
       } else {
-        print('❌ CF_TEXT (ASCII text) - NOT AVAILABLE');
+        _logger.i('CF_TEXT (ASCII text) - NOT AVAILABLE');
       }
       
       if (isClipboardFormatAvailable(CF_UNICODETEXT) != 0) {
-        print('✅ CF_UNICODETEXT (Unicode text) - AVAILABLE');
+        _logger.i('CF_UNICODETEXT (Unicode text) - AVAILABLE');
       } else {
-        print('❌ CF_UNICODETEXT (Unicode text) - NOT AVAILABLE');
+        _logger.i('CF_UNICODETEXT (Unicode text) - NOT AVAILABLE');
       }
       
       if (isClipboardFormatAvailable(CF_HDROP) != 0) {
-        print('✅ CF_HDROP (File Drop) - AVAILABLE');
-        print('🎯 FILES ARE IN CLIPBOARD!');
+        _logger.i('CF_HDROP (File Drop) - AVAILABLE');
+        _logger.i('Files are in clipboard');
       } else {
-        print('❌ CF_HDROP (File Drop) - NOT AVAILABLE');
+        _logger.i('CF_HDROP (File Drop) - NOT AVAILABLE');
       }
       
       closeClipboard();
       
-    } catch (e) {
-      print('❌ Error investigating clipboard: $e');
+    } catch (e, st) {
+      _logger.e('Error investigating clipboard', e, st);
     }
   }
 }

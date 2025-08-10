@@ -2,15 +2,17 @@ import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:shared_clipboard/services/socket_service.dart';
 import 'package:shared_clipboard/services/webrtc_service.dart';
+import 'package:shared_clipboard/core/logger.dart';
 
 
 class ClipboardService {
   late SocketService _socketService;
   late WebRTCService _webrtcService;
+  final AppLogger _logger = logTag('CLIPBOARD');
 
   void init() async {
     _socketService = SocketService();
-    _webrtcService = WebRTCService(socketService: _socketService);
+    _webrtcService = WebRTCService();
     _socketService.init(webrtcService: _webrtcService);
     _webrtcService.init();
     // Must add this line.
@@ -41,12 +43,12 @@ class ClipboardService {
   }
 
   void shareClipboard() async {
-    print("Sharing clipboard content");
+    _logger.i('Sharing clipboard content');
     _socketService.sendShareReady();
   }
 
   void requestClipboard() {
-    print("Requesting clipboard content");
+    _logger.i('Requesting clipboard content');
     // Defensive: ensure we're not advertised as ready-to-share while requesting
     _socketService.clearShareReady();
     _socketService.sendRequestShare();

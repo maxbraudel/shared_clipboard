@@ -3,7 +3,6 @@ import 'package:shared_clipboard/ui/home_page.dart';
 import 'package:shared_clipboard/services/tray_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:hotkey_manager/hotkey_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,7 +35,7 @@ void main() async {
   await NotificationService().init();
   
   // Run the app
-  runApp(BackgroundApp());
+  runApp(const BackgroundApp());
 }
 
 class BackgroundApp extends StatefulWidget {
@@ -76,7 +75,7 @@ class _BackgroundAppState extends State<BackgroundApp> with WindowListener {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: HomePage(),
+      home: const HomePage(),
       debugShowCheckedModeBanner: false,
     );
   }

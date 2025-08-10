@@ -21,9 +21,9 @@ dependencies:
   file_picker: ^5.2.5
   mime: ^1.0.4
   crypto: ^3.0.2
-  windows_taskbar: ^1.0.0
   windows_notification: ^1.1.0
   flutter_local_notifications: ^17.2.2
+  ffi: ^2.1.0
 
 
 dev_dependencies:

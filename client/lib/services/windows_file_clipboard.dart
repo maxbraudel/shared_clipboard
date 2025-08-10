@@ -1,11 +1,14 @@
+// ignore_for_file: constant_identifier_names
 import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
+import 'package:shared_clipboard/core/logger.dart';
 
 // Windows API constants
 const int CF_HDROP = 15;
 
 class WindowsFileClipboard {
+  static final AppLogger _logger = logTag('WIN_CLIP');
   static List<String>? getFilePaths() {
     if (!Platform.isWindows) return null;
 
@@ -27,14 +30,14 @@ class WindowsFileClipboard {
 
       // Open clipboard
       if (openClipboard(0) == 0) {
-        print('❌ Failed to open clipboard for file reading');
+        _logger.e('Failed to open clipboard for file reading');
         return null;
       }
 
       // Get HDROP handle
       final hDrop = getClipboardData(CF_HDROP);
       if (hDrop == 0) {
-        print('❌ No HDROP data in clipboard');
+        _logger.w('No HDROP data in clipboard');
         closeClipboard();
         return null;
       }
@@ -42,14 +45,14 @@ class WindowsFileClipboard {
       // Lock the global memory
       final dropFiles = globalLock(hDrop);
       if (dropFiles == nullptr) {
-        print('❌ Failed to lock HDROP memory');
+        _logger.e('Failed to lock HDROP memory');
         closeClipboard();
         return null;
       }
 
       // Get number of files
       final fileCount = dragQueryFileW(hDrop, 0xFFFFFFFF, nullptr, 0);
-      print('📁 Found $fileCount files in clipboard');
+      _logger.i('Found files in clipboard', {'count': fileCount});
 
       List<String> filePaths = [];
 
@@ -67,7 +70,7 @@ class WindowsFileClipboard {
           // Convert UTF-16 to Dart string
           final filePath = _utf16ToString(pathBuffer, actualSize);
           filePaths.add(filePath);
-          print('📄 File $i: $filePath');
+          _logger.d('Clipboard file', {'index': i, 'path': filePath});
         }
         
         calloc.free(pathBuffer);
@@ -79,8 +82,8 @@ class WindowsFileClipboard {
 
       return filePaths;
 
-    } catch (e) {
-      print('❌ Error reading Windows file clipboard: $e');
+    } catch (e, st) {
+      _logger.e('Error reading Windows file clipboard', e, st);
       return null;
     }
   }

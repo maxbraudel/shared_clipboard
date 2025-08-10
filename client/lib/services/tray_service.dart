@@ -1,14 +1,15 @@
 import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io';
-import 'dart:math';
+import 'package:shared_clipboard/core/logger.dart';
 
 class TrayService {
   static final SystemTray _systemTray = SystemTray();
+  static final AppLogger _logger = logTag('TRAY');
 
   static Future<void> init() async {
     try {
-      print('Initializing system tray...');
+      _logger.i('Initializing system tray...');
       
       // Initialize system tray with icon
       // Use .ico on Windows for crisp tray rendering, PNG elsewhere
@@ -20,7 +21,7 @@ class TrayService {
         toolTip: "Shared Clipboard - Click to show window",
       );
 
-      print('System tray icon created, setting up menu...');
+      _logger.i('System tray icon created, setting up menu...');
 
       final Menu menu = Menu();
       await menu.buildFrom([
@@ -36,7 +37,7 @@ class TrayService {
       await _systemTray.setContextMenu(menu);
 
       _systemTray.registerSystemTrayEventHandler((eventName) async {
-        print('System tray event: $eventName');
+        _logger.d('System tray event', eventName);
         if (eventName == kSystemTrayEventClick) {
           // Toggle window on single click
           final isVisible = await windowManager.isVisible();
@@ -50,53 +51,47 @@ class TrayService {
         }
       });
 
-      print('System tray initialized successfully');
-    } catch (e, stackTrace) {
-      print('Failed to initialize system tray: $e');
-      print('Stack trace: $stackTrace');
+      _logger.i('System tray initialized successfully');
+    } catch (e, st) {
+      _logger.e('Failed to initialize system tray', e, st);
     }
   }
 
   static Future<void> showApp() async {
+    _logger.i('Showing app window');
     try {
-      print("Attempting to show window...");
-      
       // Make sure window is created and ready
       await windowManager.show();
       await windowManager.focus();
       // Keep the app off the taskbar; it is controlled via the system tray
       await windowManager.setSkipTaskbar(true);
-      
-      print("Window shown successfully");
     } catch (e) {
-      print("Failed to show window: $e");
+      _logger.e('Failed to show window', e);
     }
   }
 
   static Future<void> hideApp() async {
     try {
-      print("Hiding window...");
-      
+      _logger.i('Hiding app window');
       await windowManager.hide();
       await windowManager.setSkipTaskbar(true);
-      
-      print("Window hidden successfully");
     } catch (e) {
-      print("Failed to hide window: $e");
+      _logger.e('Failed to hide window', e);
     }
   }
 
-  static void setEnabled(bool enabled) {
+  static Future<void> setEnabled(bool enabled) async {
+    _logger.i('Setting app enabled', {'enabled': enabled});
     // Logic to enable/disable the service
-    print("Service enabled: $enabled");
   }
 
   static Future<void> exitApp() async {
+    _logger.i('Exiting app via tray menu');
     try {
       await _systemTray.destroy();
       exit(0);
     } catch (e) {
-      print("Failed to exit app: $e");
+      _logger.e('Failed to exit app', e);
       exit(1);
     }
   }
@@ -105,7 +100,7 @@ class TrayService {
     try {
       await _systemTray.setToolTip(tooltip);
     } catch (e) {
-      print("Failed to update tooltip: $e");
+      _logger.e('Failed to update tooltip', e);
     }
   }
 
@@ -115,7 +110,7 @@ class TrayService {
       await _systemTray.setTitle(title);
     } catch (e) {
       // Safe to ignore if not supported
-      print("Failed to update title: $e");
+      _logger.w('Failed to update title', e);
     }
   }
 }
