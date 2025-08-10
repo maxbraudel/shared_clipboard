@@ -33,7 +33,6 @@ class WebRTCService {
   final Map<String, int> _rxReceivedBytes = {};
   final Map<String, int> _rxTotalBytes = {};
   Completer<void>? _bufferLowCompleter;
-  bool _saveDialogOpen = false; // gate to avoid blocking multiple sessions
 
   // Streaming files state (proto v2)
   final Map<String, _FileSession> _fileSessions = {};
@@ -47,10 +46,6 @@ class WebRTCService {
   bool _isSending = false;
   ClipboardContent? _preparedOutgoingContent; // used by createOffer to skip re-reading clipboard
   String? _preparedPeerId; // used when dequeuing to preserve target peer
-
-  // Interleaved sending state
-  final Map<String, _OutgoingSession> _outgoingSessions = {}; // sessionId -> session
-  bool _sendLoopRunning = false;
   
   // Callback to send signals back to socket service
   Function(String to, dynamic signal)? onSignalGenerated;
@@ -91,7 +86,7 @@ class WebRTCService {
     }();
   }
 
-  // Streaming files protocol with interleaved scheduler (proto v2)
+  // Streaming files protocol (proto v2)
   Future<void> _sendFilesStreaming(ClipboardContent content) async {
     if (_dataChannel == null) throw StateError('DataChannel not ready');
     final sessionId = DateTime.now().microsecondsSinceEpoch.toString();
@@ -124,154 +119,158 @@ class WebRTCService {
       _sessionReadyCompleters.remove(sessionId);
       return;
     }
-    // Register interleaved outgoing session and kick scheduler
-    final toSend = content.files
-        .map((f) => _FileToSend(
-              name: f.name,
-              size: f.size,
-              checksum: f.checksum,
-              bytes: f.content,
-            ))
-        .toList();
-    final sess = _OutgoingSession(sessionId, filesMeta, toSend);
-    _outgoingSessions[sessionId] = sess;
-    _log('🗂️ OUTGOING SESSION REGISTERED', {
-      'sessionId': sessionId,
-      'files': content.files.length,
-      'activeSessions': _outgoingSessions.length
-    });
-    _ensureSendLoop();
-  }
 
-  void _ensureSendLoop() {
-    if (_sendLoopRunning) return;
-    if (_dataChannel == null) return;
-    _sendLoopRunning = true;
-    () async {
-      try {
-        await _runSendLoop();
-      } finally {
-        _sendLoopRunning = false;
-        // If new sessions arrived while finishing, loop again
-        if (_outgoingSessions.isNotEmpty && _dataChannel != null) {
-          _ensureSendLoop();
+    // Stream each file with comprehensive diagnostics
+    for (int i = 0; i < content.files.length; i++) {
+      final f = content.files[i];
+      final bytes = f.content; // already read in FileTransferService
+      int offset = 0;
+      int chunkCount = 0;
+      final totalChunks = (bytes.length / _chunkSize).ceil();
+      
+      _log('🚀 STARTING FILE TRANSFER', {
+        'file': f.name,
+        'size': bytes.length,
+        'totalChunks': totalChunks,
+        'chunkSize': _chunkSize
+      });
+      
+      while (offset < bytes.length) {
+        final end = (offset + _chunkSize > bytes.length) ? bytes.length : offset + _chunkSize;
+        final chunkBytes = bytes.sublist(offset, end);
+        final env = jsonEncode({
+          '__sc_proto': 2,
+          'kind': 'files',
+          'mode': 'file_chunk',
+          'sessionId': sessionId,
+          'fileIndex': i,
+          'data': base64Encode(chunkBytes),
+        });
+        
+        try {
+          _dataChannel!.send(RTCDataChannelMessage(env));
+          chunkCount++;
+          
+          // Log progress every 100 chunks and show notifications at round percentages
+          if (chunkCount % 100 == 0) {
+            final progress = (offset / bytes.length * 100).toStringAsFixed(1);
+            _log('📤 SENDING PROGRESS', {
+              'file': f.name,
+              'chunk': chunkCount,
+              'of': totalChunks,
+              'progress': '$progress%',
+              'bytesRemaining': bytes.length - offset,
+              'bufferedAmount': _dataChannel!.bufferedAmount
+            });
+          }
+        } catch (e) {
+          _log('❌ ERROR SENDING CHUNK', {
+            'chunk': chunkCount,
+            'offset': offset,
+            'error': e.toString()
+          });
+          rethrow;
+        }
+        
+        offset = end;
+
+        // Wait for ACK from receiver every 100 chunks for flow control
+        if (chunkCount % 100 == 0) {
+          _log('⏳ WAITING FOR ACK');
+          _ackCompleter = Completer<void>();
+          try {
+            await _ackCompleter!.future.timeout(const Duration(seconds: 30));
+            _log('✅ ACK RECEIVED, CONTINUING TRANSFER');
+          } catch (e) {
+            _log('❌ ACK TIMEOUT, ABORTING TRANSFER', e.toString());
+            throw Exception('ACK timeout');
+          } finally {
+            _ackCompleter = null;
+          }
         }
       }
-    }();
-  }
+      
+      // Note: Do not wait for an extra ACK here; the receiver sends ACKs every 100 chunks
+      // and will ACK upon file_end. We proceed to file_end immediately to avoid timeouts.
 
-  Future<void> _runSendLoop() async {
-    const burstChunksPerSession = 4; // fairness: small burst before rotating
-    while (_dataChannel != null && _outgoingSessions.isNotEmpty) {
-      // Backpressure: wait until buffered amount low before trying to send
+      _log('✅ FINISHED SENDING FILE', {
+        'file': f.name,
+        'totalChunks': chunkCount,
+        'totalBytes': bytes.length,
+        'finalBufferedAmount': _dataChannel!.bufferedAmount
+      });
+      
+      // Ensure buffered data is flushed before signaling file end
       while ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
+        _log('⏳ WAITING BUFFER TO DRAIN BEFORE FILE_END', {'buffered': _dataChannel!.bufferedAmount});
         _bufferLowCompleter = Completer<void>();
         try {
           await _bufferLowCompleter!.future;
         } catch (_) {
-          await Future.delayed(const Duration(milliseconds: 50));
+          await Future.delayed(const Duration(milliseconds: 100));
         }
       }
 
-      // Snapshot session IDs to iterate fairly even if map mutates
-      final sids = _outgoingSessions.keys.toList();
-      for (final sid in sids) {
-        final sess = _outgoingSessions[sid];
-        if (sess == null) continue;
+      // End of this file
+      final fileEndAckKey = '$sessionId:file_end';
+      _ackWaiters[fileEndAckKey] = Completer<void>();
+      final fileEnd = jsonEncode({
+        '__sc_proto': 2,
+        'kind': 'files',
+        'mode': 'file_end',
+        'sessionId': sessionId,
+        'fileIndex': i,
+      });
+      _dataChannel!.send(RTCDataChannelMessage(fileEnd));
 
-        // If file completed, send file_end and wait ACK, then advance
-        if (sess.currentFileCompleted) {
-          final idx = sess.fileIndex;
-          final fileEndAckKey = '$sid:file_end';
-          _ackWaiters[fileEndAckKey] = Completer<void>();
-          final fileEnd = jsonEncode({
-            '__sc_proto': 2,
-            'kind': 'files',
-            'mode': 'file_end',
-            'sessionId': sid,
-            'fileIndex': idx,
-          });
-          _dataChannel!.send(RTCDataChannelMessage(fileEnd));
-          _log('📨 SENT FILE_END', {'sessionId': sid, 'fileIndex': idx});
-          try {
-            await _ackWaiters[fileEndAckKey]!.future.timeout(const Duration(seconds: 30));
-            _log('✅ FILE_END ACK RECEIVED', {'sessionId': sid, 'fileIndex': idx});
-          } catch (e) {
-            _log('❌ FILE_END ACK TIMEOUT', e.toString());
-            _outgoingSessions.remove(sid);
-            continue;
-          } finally {
-            _ackWaiters.remove(fileEndAckKey);
-          }
-          sess.advanceToNextFile();
-          // Continue to next session this cycle after signaling boundary
-          continue;
-        }
-
-        // If session finished, send end and wait ACK, then remove
-        if (sess.sessionCompleted) {
-          final endAckKey = '$sid:end';
-          _ackWaiters[endAckKey] = Completer<void>();
-          final endEnv = jsonEncode({
-            '__sc_proto': 2,
-            'kind': 'files',
-            'mode': 'end',
-            'sessionId': sid,
-          });
-          _dataChannel!.send(RTCDataChannelMessage(endEnv));
-          _log('🏁 SENT SESSION END', {'sessionId': sid});
-          try {
-            await _ackWaiters[endAckKey]!.future.timeout(const Duration(seconds: 30));
-            _log('✅ SESSION END ACK RECEIVED', {'sessionId': sid});
-          } catch (e) {
-            _log('❌ SESSION END ACK TIMEOUT', e.toString());
-          } finally {
-            _ackWaiters.remove(endAckKey);
-            _outgoingSessions.remove(sid);
-          }
-          continue;
-        }
-
-        // Send a small burst of chunks for fairness
-        int sentInBurst = 0;
-        while (sentInBurst < burstChunksPerSession && !sess.currentFileCompleted) {
-          // Backpressure check
-          if ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
-            break;
-          }
-
-          final fileIdx = sess.fileIndex;
-          final fs = sess.currentFileState;
-          final start = fs.offset;
-          final end = (start + _chunkSize > fs.bytes.length) ? fs.bytes.length : start + _chunkSize;
-          final chunkBytes = fs.bytes.sublist(start, end);
-          final env = jsonEncode({
-            '__sc_proto': 2,
-            'kind': 'files',
-            'mode': 'file_chunk',
-            'sessionId': sid,
-            'fileIndex': fileIdx,
-            'data': base64Encode(chunkBytes),
-          });
-          _dataChannel!.send(RTCDataChannelMessage(env));
-          fs.offset = end;
-          fs.chunkCount++;
-          sentInBurst++;
-
-          if (fs.chunkCount % 100 == 0) {
-            final progress = (fs.offset / fs.bytes.length * 100).toStringAsFixed(1);
-            _log('📤 PROGRESS', {
-              'sessionId': sid,
-              'file': fs.name,
-              'chunk': fs.chunkCount,
-              'progress': '$progress%',
-              'buffered': _dataChannel!.bufferedAmount
-            });
-          }
-        }
+      // Wait for ACK confirming receiver processed file end
+      _log('⏳ WAITING FOR FILE_END ACK (scoped)');
+      try {
+        await _ackWaiters[fileEndAckKey]!.future.timeout(const Duration(seconds: 30));
+        _log('✅ FILE_END ACK RECEIVED');
+      } catch (e) {
+        _log('❌ FILE_END ACK TIMEOUT', e.toString());
+        throw Exception('File end ACK timeout');
+      } finally {
+        _ackWaiters.remove(fileEndAckKey);
       }
-      // Small yield to allow bufferedAmountLow and ACK handlers to run
-      await Future.delayed(const Duration(milliseconds: 1));
+    }
+
+    // Ensure buffer drains before session end
+    while ((_dataChannel!.bufferedAmount ?? 0) > _bufferedLowThreshold) {
+      _log('⏳ WAITING BUFFER TO DRAIN BEFORE SESSION END', {'buffered': _dataChannel!.bufferedAmount});
+      _bufferLowCompleter = Completer<void>();
+      try {
+        await _bufferLowCompleter!.future;
+      } catch (_) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+    }
+
+    // End session
+    final endAckKey = '$sessionId:end';
+    _ackWaiters[endAckKey] = Completer<void>();
+    final endEnv = jsonEncode({
+      '__sc_proto': 2,
+      'kind': 'files',
+      'mode': 'end',
+      'sessionId': sessionId,
+    });
+    _dataChannel!.send(RTCDataChannelMessage(endEnv));
+
+    // Wait for final ACK after receiver finalizes
+    _log('⏳ WAITING FOR SESSION END ACK (scoped)');
+    try {
+      await _ackWaiters[endAckKey]!.future.timeout(const Duration(seconds: 30));
+      _log('✅ SESSION END ACK RECEIVED');
+    } catch (e) {
+      _log('❌ SESSION END ACK TIMEOUT', e.toString());
+      throw Exception('Session end ACK timeout');
+    } finally {
+      _ackWaiters.remove(endAckKey);
+      // Current send session finished; drain queue
+      _isSending = false;
+      _startNextSendIfAny();
     }
   }
 
@@ -408,33 +407,11 @@ class WebRTCService {
             final mode = env['mode'] as String?;
             final sessionId = env['sessionId'] as String?;
             if (mode == 'start' && sessionId != null) {
-              // Ask user for directory immediately
+              // Ask user for directory immediately - each session runs concurrently
               final filesMeta = (env['files'] as List).cast<Map<String, dynamic>>();
-              _log('🔰 START FILE STREAM SESSION', {'sessionId': sessionId, 'files': filesMeta.length});
-              () async {
-                final prepared = await _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
-                if (!prepared) {
-                  // Inform sender we cancelled so it can abort immediately
-                  final cancelEnv = jsonEncode({
-                    '__sc_proto': 2,
-                    'kind': 'files',
-                    'mode': 'cancel',
-                    'sessionId': sessionId,
-                  });
-                  _dataChannel?.send(RTCDataChannelMessage(cancelEnv));
-                  _log('🚫 RECEIVER CANCELLED BEFORE READY', sessionId);
-                  return;
-                }
-                // Notify sender we are ready to receive chunks
-                final readyEnv = jsonEncode({
-                  '__sc_proto': 2,
-                  'kind': 'files',
-                  'mode': 'ready',
-                  'sessionId': sessionId,
-                });
-                _dataChannel?.send(RTCDataChannelMessage(readyEnv));
-                _log('📨 SENT RECEIVER READY', sessionId);
-              }();
+              _log('🔰 START FILE STREAM SESSION (CONCURRENT)', {'sessionId': sessionId, 'files': filesMeta.length});
+              // Launch concurrent session preparation without blocking other sessions
+              _handleIncomingFileSession(sessionId, filesMeta);
               return;
             }
             if (mode == 'ready' && sessionId != null) {
@@ -543,15 +520,17 @@ class WebRTCService {
       final content = _pendingClipboardContent!;
       if (content.isFiles) {
         _log('📤 SENDING FILES VIA STREAMING PROTOCOL', {'count': content.files.length});
-        // Interleaved: register session and start loop; do not toggle _isSending here
         _sendFilesStreaming(content).then((_) {
-          _log('✅ FILES REGISTERED FOR STREAMING');
+          _log('✅ FILES STREAMED SUCCESSFULLY');
           _pendingClipboardContent = null;
+          _isSending = false;
+          _startNextSendIfAny();
         }).catchError((e) {
-          _log('❌ ERROR REGISTERING FILES FOR STREAMING', e.toString());
+          _log('❌ ERROR STREAMING FILES', e.toString());
+          _isSending = false;
+          _startNextSendIfAny();
         });
       } else {
-        _isSending = true;
         final payload = _fileTransferService.serializeClipboardContent(content);
         _log('📤 SENDING TEXT/JSON VIA CHUNKING', {'bytes': payload.length});
         _sendLargeMessage(payload).then((_) {
@@ -724,43 +703,19 @@ class WebRTCService {
     _isInitialized = false;
     _pendingCandidates.clear();
     _remoteDescriptionSet = false;
-    // Reset interleaved send state
-    _outgoingSessions.clear();
-    _sendLoopRunning = false;
   }
 
   Future<void> createOffer(String? peerId) async {
     try {
       _log('🎯 createOffer CALLED', peerId);
-      // Fast path: if channel is already open, piggyback new FILE sessions without renegotiation
-      if (_dataChannel != null && _dataChannel!.state == RTCDataChannelState.RTCDataChannelOpen) {
-        try {
-          final clipboardContent = await _fileTransferService.getClipboardContent();
-          if (clipboardContent.isFiles) {
-            _log('⚡ CHANNEL OPEN: REGISTERING FILE SESSION WITHOUT NEW OFFER', {
-              'files': clipboardContent.files.length
-            });
-            await _sendFilesStreaming(clipboardContent);
-            return;
-          }
-        } catch (e) {
-          _log('⚠️ FAST-PATH CLIPBOARD READ FAILED, FALLING BACK', e.toString());
-        }
-      }
       
-      // If a text send is in progress, queue this new share instead of aborting
+      // If a send is in progress, queue this new share instead of aborting
       if (_isSending) {
         _log('⏳ SEND IN PROGRESS, QUEUEING NEW OUTGOING SHARE');
         try {
           final clipboardContent = await _fileTransferService.getClipboardContent();
           if (!clipboardContent.isFiles && clipboardContent.text.isEmpty) {
             _log('❌ NO CLIPBOARD CONTENT TO QUEUE');
-            return;
-          }
-          // For files, if channel is open we can piggyback instead of queueing
-          if (clipboardContent.isFiles && _dataChannel != null && _dataChannel!.state == RTCDataChannelState.RTCDataChannelOpen) {
-            _log('🔁 CHANNEL OPEN: REGISTERING NEW OUTGOING FILE SESSION');
-            await _sendFilesStreaming(clipboardContent);
             return;
           }
           _outgoingQueue.add(_OutgoingItem(peerId, clipboardContent));
@@ -813,8 +768,8 @@ class WebRTCService {
       } catch (e) {
         _log('❌ ERROR READING CLIPBOARD', e.toString());
       } finally {
-        // Mark sending started only for text content; interleaved files don't use _isSending
-        if (_pendingClipboardContent != null && !_pendingClipboardContent!.isFiles) {
+        // Mark sending started if we have content; clear prepared flags
+        if (_pendingClipboardContent != null) {
           _isSending = true;
         }
         _preparedOutgoingContent = null;
@@ -1105,6 +1060,48 @@ class WebRTCService {
   }
 
   // ===== Streaming file receiver helpers (proto v2) =====
+  
+  // Handle incoming file session concurrently - each session prompts user independently
+  void _handleIncomingFileSession(String sessionId, List<Map<String, dynamic>> filesMeta) {
+    // Launch async without blocking other sessions
+    () async {
+      try {
+        final prepared = await _promptDirectoryAndPrepareFiles(sessionId, filesMeta);
+        if (!prepared) {
+          // Inform sender we cancelled so it can abort immediately
+          final cancelEnv = jsonEncode({
+            '__sc_proto': 2,
+            'kind': 'files',
+            'mode': 'cancel',
+            'sessionId': sessionId,
+          });
+          _dataChannel?.send(RTCDataChannelMessage(cancelEnv));
+          _log('🚫 RECEIVER CANCELLED BEFORE READY', sessionId);
+          return;
+        }
+        // Notify sender we are ready to receive chunks
+        final readyEnv = jsonEncode({
+          '__sc_proto': 2,
+          'kind': 'files',
+          'mode': 'ready',
+          'sessionId': sessionId,
+        });
+        _dataChannel?.send(RTCDataChannelMessage(readyEnv));
+        _log('📨 SENT RECEIVER READY', sessionId);
+      } catch (e) {
+        _log('❌ ERROR HANDLING INCOMING FILE SESSION', {'sessionId': sessionId, 'error': e.toString()});
+        // Send cancel to sender on any error
+        final cancelEnv = jsonEncode({
+          '__sc_proto': 2,
+          'kind': 'files',
+          'mode': 'cancel',
+          'sessionId': sessionId,
+        });
+        _dataChannel?.send(RTCDataChannelMessage(cancelEnv));
+      }
+    }();
+  }
+  
   // Returns true if files were prepared and we're ready to receive.
   // Returns false if the user cancelled any save dialog; in that case, the caller should send a 'cancel' control.
   Future<bool> _promptDirectoryAndPrepareFiles(
@@ -1117,69 +1114,34 @@ class WebRTCService {
       }
 
       String? sessionDir;
-
-      // If a save dialog is already open (user is picking for another session),
-      // auto-save this session to a default directory so we don't block.
-      if (_saveDialogOpen) {
-        final home = Platform.environment['HOME'] ?? Directory.current.path;
-        final base = Directory('$home/Downloads/SharedClipboard/$sessionId');
-        await base.create(recursive: true);
-        sessionDir = base.path;
-        for (final meta in filesMeta) {
-          final name = (meta['name'] as String?) ?? 'file';
-          final file = File('${base.path}/$name');
-          await file.parent.create(recursive: true);
-          final sink = file.openWrite();
-          incomingFiles.add(_IncomingFile(
-            name: name,
-            size: (meta['size'] as num?)?.toInt() ?? 0,
-            checksum: (meta['checksum'] as String?) ?? '',
-            file: file,
-            sink: sink,
-          ));
-        }
-        _log('📂 AUTO-SAVING SESSION (dialog busy)', {
-          'sessionId': sessionId,
-          'dir': sessionDir,
-          'files': filesMeta.length
-        });
-        _notificationService.showClipboardReceiveSuccess(
-          _peerId ?? 'Unknown Device',
-          isFile: true,
+      for (final meta in filesMeta) {
+        final name = (meta['name'] as String?) ?? 'file';
+        String? savePath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save incoming file',
+          fileName: name,
         );
-      } else {
-        // Normal flow: prompt user for save location(s)
-        try {
-          _saveDialogOpen = true;
-          for (final meta in filesMeta) {
-            final name = (meta['name'] as String?) ?? 'file';
-            String? savePath = await FilePicker.platform.saveFile(
-              dialogTitle: 'Save incoming file',
-              fileName: name,
-            );
-            if (savePath == null || savePath.isEmpty) {
-              _log('🚫 USER CANCELLED SAVE DIALOG');
-              for (final created in incomingFiles) {
-                await created.sink.close();
-                await created.file.delete();
-              }
-              return false;
-            }
-            sessionDir ??= File(savePath).parent.path;
-            await File(savePath).parent.create(recursive: true);
-            final file = File(savePath);
-            final sink = file.openWrite();
-            incomingFiles.add(_IncomingFile(
-              name: name,
-              size: (meta['size'] as num?)?.toInt() ?? 0,
-              checksum: (meta['checksum'] as String?) ?? '',
-              file: file,
-              sink: sink,
-            ));
+
+        if (savePath == null || savePath.isEmpty) {
+          _log('🚫 USER CANCELLED SAVE DIALOG');
+          // Clean up any files that were already created for this session
+          for (final created in incomingFiles) {
+            await created.sink.close();
+            await created.file.delete();
           }
-        } finally {
-          _saveDialogOpen = false;
+          return false;
         }
+
+        sessionDir ??= File(savePath).parent.path;
+        await File(savePath).parent.create(recursive: true);
+        final file = File(savePath);
+        final sink = file.openWrite();
+        incomingFiles.add(_IncomingFile(
+          name: name,
+          size: (meta['size'] as num?)?.toInt() ?? 0,
+          checksum: (meta['checksum'] as String?) ?? '',
+          file: file,
+          sink: sink,
+        ));
       }
 
       final session = _FileSession(sessionDir!, incomingFiles);
@@ -1389,53 +1351,4 @@ class _OutgoingItem {
   final String? peerId;
   final ClipboardContent content;
   _OutgoingItem(this.peerId, this.content);
-}
-
-// Outgoing interleaved sending helpers
-class _FileToSend {
-  final String name;
-  final int size;
-  final String checksum;
-  final List<int> bytes;
-  _FileToSend({
-    required this.name,
-    required this.size,
-    required this.checksum,
-    required this.bytes,
-  });
-}
-
-class _OutgoingFileState {
-  final String name;
-  final List<int> bytes;
-  int offset = 0;
-  int chunkCount = 0;
-  _OutgoingFileState({required this.name, required this.bytes});
-  bool get completed => offset >= bytes.length;
-}
-
-class _OutgoingSession {
-  final String sessionId;
-  final List<Map<String, dynamic>> filesMeta;
-  final List<_FileToSend> files;
-  int fileIndex = 0;
-  _OutgoingFileState? _current;
-
-  _OutgoingSession(this.sessionId, this.filesMeta, this.files);
-
-  bool get sessionCompleted => fileIndex >= files.length && (_current == null || _current!.completed);
-  bool get currentFileCompleted => _current?.completed == true;
-
-  _OutgoingFileState get currentFileState {
-    if (_current == null) {
-      final f = files[fileIndex];
-      _current = _OutgoingFileState(name: f.name, bytes: f.bytes);
-    }
-    return _current!;
-  }
-
-  void advanceToNextFile() {
-    _current = null;
-    fileIndex++;
-  }
 }
