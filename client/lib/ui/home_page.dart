@@ -862,6 +862,21 @@ class _HomePageState extends State<HomePage> {
                           style: const TextStyle(fontSize: 14),
                         ),
                         subtitle: Text('Connected $durationText'),
+                        trailing: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: device['readyToShare'] == true ? Colors.green[100] : Colors.orange[100],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            device['readyToShare'] == true ? 'Ready' : 'Busy',
+                            style: TextStyle(
+                              color: device['readyToShare'] == true ? Colors.green[700] : Colors.orange[700],
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
                       );
                     },
                   ),
