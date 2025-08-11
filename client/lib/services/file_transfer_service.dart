@@ -77,20 +77,11 @@ class FileTransferService {
       // Check if it looks like a path
       bool looksLikePath = false;
       if (Platform.isWindows) {
-        // Windows paths: C:\, D:\, \\server\share, etc. (be more strict)
-        // Must be a drive letter followed by colon and backslash, or UNC path
-        looksLikePath = RegExp(r'^[a-zA-Z]:\\.*').hasMatch(cleanPath) || // C:\path
-                       RegExp(r'^\\\\[^\\]+\\.*').hasMatch(cleanPath); // \\server\share
-        
-        // Additional check: if it looks like a path, it should contain backslashes or be a file with extension
-        if (looksLikePath) {
-          looksLikePath = cleanPath.contains('\\') || RegExp(r'.*\.[a-zA-Z0-9]{1,10}$').hasMatch(cleanPath);
-        }
+        // Windows paths: C:\, D:\, \\server\share, etc.
+        looksLikePath = RegExp(r'^([a-zA-Z]:\\|\\\\).*').hasMatch(cleanPath);
       } else {
-        // Unix-like paths: /path/to/file (but be more strict - must have at least one slash after the root)
-        // Also check for common macOS paths like /Users/, /Applications/, /System/, etc.
-        looksLikePath = RegExp(r'^/(Users|Applications|System|Library|Volumes|private|usr|bin|etc|var|tmp)/.*').hasMatch(cleanPath) ||
-                       RegExp(r'^/.*\.[a-zA-Z0-9]{1,10}$').hasMatch(cleanPath); // or ends with file extension
+        // Unix-like paths: /path/to/file
+        looksLikePath = RegExp(r'^/.*').hasMatch(cleanPath);
       }
       
       if (looksLikePath) {
@@ -207,36 +198,37 @@ class FileTransferService {
         String filePath = line.replaceAll('"', '').trim();
         
         final file = File(filePath);
-        if (!await file.exists()) {
-          _log('⚠️ FILE DOES NOT EXIST', filePath);
+        
+        try {
+          final stat = await file.stat();
+          if (stat.size > maxFileSize) {
+            _log('⚠️ FILE TOO LARGE, SKIPPING', '$filePath (${stat.size} bytes)');
+            continue;
+          }
+          
+          _log('📄 PROCESSING FILE', '$filePath (${stat.size} bytes)');
+          
+          final bytes = await file.readAsBytes();
+          final mimeType = lookupMimeType(file.path) ?? 'application/octet-stream';
+          final checksum = sha256.convert(bytes).toString();
+          
+          // Get just the filename for cross-platform compatibility
+          final fileName = file.path.split(Platform.pathSeparator).last;
+          
+          files.add(FileData(
+            name: fileName,
+            path: file.path,
+            size: stat.size,
+            mimeType: mimeType,
+            checksum: checksum,
+            content: bytes,
+          ));
+          
+          _log('✅ FILE PROCESSED', '$fileName ($mimeType)');
+        } catch (e) {
+          _log('⚠️ ERROR PROCESSING FILE, SKIPPING', '$filePath: $e');
           continue;
         }
-        
-        final stat = await file.stat();
-        if (stat.size > maxFileSize) {
-          _log('⚠️ FILE TOO LARGE, SKIPPING', '$filePath (${stat.size} bytes)');
-          continue;
-        }
-        
-        _log('📄 PROCESSING FILE', '$filePath (${stat.size} bytes)');
-        
-        final bytes = await file.readAsBytes();
-        final mimeType = lookupMimeType(file.path) ?? 'application/octet-stream';
-        final checksum = sha256.convert(bytes).toString();
-        
-        // Get just the filename for cross-platform compatibility
-        final fileName = file.path.split(Platform.pathSeparator).last;
-        
-        files.add(FileData(
-          name: fileName,
-          path: file.path,
-          size: stat.size,
-          mimeType: mimeType,
-          checksum: checksum,
-          content: bytes,
-        ));
-        
-        _log('✅ FILE PROCESSED', '$fileName ($mimeType)');
       }
       
       if (files.isEmpty) {

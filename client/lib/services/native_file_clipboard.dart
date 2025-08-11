@@ -151,12 +151,44 @@ class NativeFileClipboard {
     }
   }
 
+  /// Check if clipboard contains file URLs using clipboard info
+  static Future<bool> _clipboardContainsFiles() async {
+    try {
+      final info = await Process.run('osascript', ['-e', 'clipboard info']);
+      if (info.exitCode == 0 && info.stdout is String) {
+        final clipboardInfo = info.stdout as String;
+        // Check if clipboard info contains file URL class
+        bool hasFileUrl = clipboardInfo.contains('«class furl»');
+        _log('🔍 CLIPBOARD INFO ANALYSIS', {
+          'hasFileUrl': hasFileUrl,
+          'info': clipboardInfo.trim()
+        });
+        return hasFileUrl;
+      }
+      return false;
+    } catch (e) {
+      _log('❌ ERROR CHECKING CLIPBOARD INFO', e.toString());
+      return false;
+    }
+  }
+
   /// Returns file paths currently in the system clipboard on macOS
   static Future<List<String>> getFilesFromClipboard() async {
     try {
       if (!Platform.isMacOS) return [];
+      
       // Always dump clipboard details for diagnostics
       await debugDumpClipboard();
+      
+      // First check if clipboard actually contains files using clipboard info
+      final hasFiles = await _clipboardContainsFiles();
+      if (!hasFiles) {
+        _log('📝 CLIPBOARD INFO INDICATES TEXT CONTENT, NOT FILES');
+        return [];
+      }
+      
+      _log('📁 CLIPBOARD INFO INDICATES FILE CONTENT, EXTRACTING PATHS');
+      
       // 0) First, explicitly coerce clipboard to file URL (furl) and read POSIX path
       const furlScript = r'''
         try
