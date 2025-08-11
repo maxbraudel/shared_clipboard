@@ -1358,6 +1358,31 @@ class WebRTCService {
     }
   }
 
+  void cancelCurrentDownload() {
+    _log('🚫 CANCELLING CURRENT DOWNLOAD');
+    
+    // Abort all active file sessions
+    final sessionIds = List<String>.from(_fileSessions.keys);
+    for (final sessionId in sessionIds) {
+      _abortFileSession(sessionId);
+    }
+    
+    // Clear any pending completers
+    _sessionReadyCompleters.clear();
+    _ackWaiters.clear();
+    
+    // Clear receive buffers
+    _rxBuffers.clear();
+    _rxReceivedBytes.clear();
+    _rxTotalBytes.clear();
+    
+    // Reset sending state
+    _isSending = false;
+    _currentTransferContent = null;
+    
+    _log('✅ DOWNLOAD CANCELLED AND STATE CLEARED');
+  }
+
   void dispose() {
     _dataChannel?.close();
     _peerConnection?.close();

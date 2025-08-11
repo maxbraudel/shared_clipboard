@@ -736,6 +736,63 @@ class _HomePageState extends State<HomePage> {
     _processClipboardRequest(deviceName);
   }
 
+  void _cancelPendingRequest(int index) {
+    if (index < 0 || index >= _pendingRequests.length) return;
+    
+    final request = _pendingRequests[index];
+    _logger.i('User cancelled pending clipboard request for ${request.deviceName}');
+    
+    // If this is the first (active) request and we're downloading, cancel the download too
+    if (index == 0 && _isDownloading) {
+      _logger.i('Cancelling associated download for pending request');
+      _webrtcService.cancelCurrentDownload();
+    }
+    
+    setState(() {
+      _pendingRequests.removeAt(index);
+      
+      // If this was the active request, reset the requesting state
+      if (index == 0 && _isRequestingClipboard) {
+        _isRequestingClipboard = false;
+      }
+      
+      // If this was the active request and we were downloading, reset download state
+      if (index == 0 && _isDownloading) {
+        _isDownloading = false;
+        _downloadProgress = 0.0;
+        _currentDownloadFileName = null;
+      }
+    });
+    
+    // Process next queued request if any
+    _processNextQueuedRequest();
+  }
+
+  void _cancelCurrentDownload() {
+    if (!_isDownloading) return;
+    
+    _logger.i('User cancelled current download: ${_currentDownloadFileName ?? "unknown"}');
+    
+    // Cancel the download in WebRTC service
+    _webrtcService.cancelCurrentDownload();
+    
+    setState(() {
+      _isDownloading = false;
+      _downloadProgress = 0.0;
+      _currentDownloadFileName = null;
+      
+      // Also remove the first pending request if it exists (the active one associated with this download)
+      if (_pendingRequests.isNotEmpty) {
+        _logger.i('Removing associated pending request for cancelled download');
+        _pendingRequests.removeAt(0);
+        _isRequestingClipboard = false;
+      }
+    });
+    
+    // Process next queued request if any
+    _processNextQueuedRequest();
+  }
+
   Widget _buildConnectedDevicesSection() {
     return _buildCategorySection(
       title: _isLoadingDevices 
@@ -902,6 +959,11 @@ class _HomePageState extends State<HomePage> {
                       style: const TextStyle(fontSize: 14),
                     ),
                     subtitle: Text(request.statusMessage),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.red, size: 20),
+                      onPressed: () => _cancelPendingRequest(index),
+                      tooltip: 'Cancel request',
+                    ),
                   );
                 },
               ),
@@ -927,9 +989,20 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _currentDownloadFileName ?? 'Downloading...',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _currentDownloadFileName ?? 'Downloading...',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.red, size: 20),
+                        onPressed: _cancelCurrentDownload,
+                        tooltip: 'Cancel download',
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   LinearProgressIndicator(
