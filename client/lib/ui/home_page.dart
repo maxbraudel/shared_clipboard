@@ -929,7 +929,7 @@ class _HomePageState extends State<HomePage> {
                 _lastRetrievedType == 'file' ? _lastRetrievedContent! : 'Text: ${_lastRetrievedContent!}',
                 style: const TextStyle(fontSize: 14),
               ),
-              subtitle: Text('From: ${_lastRetrievedOrigin ?? "Unknown"} • Type: ${_lastRetrievedType!}'),
+              subtitle: Text('From: ${_lastRetrievedOrigin ?? "Unknown"}\nType: ${_lastRetrievedType!}'),
             )
           : const Padding(
               padding: EdgeInsets.all(16),
