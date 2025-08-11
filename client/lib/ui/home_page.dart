@@ -8,6 +8,7 @@ import 'package:shared_clipboard/services/webrtc_service.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
 import 'package:shared_clipboard/core/logger.dart';
+import 'package:shared_clipboard/core/constants.dart';
 import 'package:window_manager/window_manager.dart';
 // ignore_for_file: library_private_types_in_public_api
 
@@ -473,7 +474,7 @@ class _HomePageState extends State<HomePage> {
                           alignment: Alignment.centerLeft,
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           child: const Text(
-                            'Last Shared Clipboard',
+                            AppConstants.appName,
                             style: TextStyle(
                               color: Colors.black,
                               fontSize: 14,
@@ -514,11 +515,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             )
-          : AppBar(
-              title: const Text('Shared Clipboard'),
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.black, // Title color to black
-            ),
+          : null, // No AppBar on macOS - cleaner look
       body: Container(
         color: Colors.grey[50],
         padding: const EdgeInsets.all(16),

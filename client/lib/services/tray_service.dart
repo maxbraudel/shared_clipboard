@@ -2,6 +2,7 @@ import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io';
 import 'package:shared_clipboard/core/logger.dart';
+import 'package:shared_clipboard/core/constants.dart';
 
 class TrayService {
   static final SystemTray _systemTray = SystemTray();
@@ -16,9 +17,9 @@ class TrayService {
       String iconPath = Platform.isWindows ? 'assets/icon.ico' : 'assets/icon.png';
 
       await _systemTray.initSystemTray(
-        title: "Shared Clipboard",
+        title: AppConstants.appName,
         iconPath: iconPath,
-        toolTip: "Shared Clipboard - Click to show window",
+        toolTip: "${AppConstants.appName} - Click to show window",
       );
 
       _logger.i('System tray icon created, setting up menu...');

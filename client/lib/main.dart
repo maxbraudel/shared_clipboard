@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_clipboard/ui/home_page.dart';
 import 'package:shared_clipboard/services/tray_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
+import 'package:shared_clipboard/core/constants.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io' show Platform;
 
@@ -27,6 +28,8 @@ void main() async {
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setPreventClose(true);
     await windowManager.setSkipTaskbar(true);
+    // Set the window title explicitly to override pubspec.yaml name
+    await windowManager.setTitle(AppConstants.appName);
     // Keep the window hidden on startup explicitly
     await windowManager.hide();
   });
@@ -74,7 +77,7 @@ class _BackgroundAppState extends State<BackgroundApp> with WindowListener {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Shared Clipboard',
+      title: AppConstants.appName,
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
