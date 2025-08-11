@@ -77,8 +77,15 @@ class FileTransferService {
       // Check if it looks like a path
       bool looksLikePath = false;
       if (Platform.isWindows) {
-        // Windows paths: C:\, D:\, \\server\share, etc.
-        looksLikePath = RegExp(r'^([a-zA-Z]:\\|\\\\).*').hasMatch(cleanPath);
+        // Windows paths: C:\, D:\, \\server\share, etc. (be more strict)
+        // Must be a drive letter followed by colon and backslash, or UNC path
+        looksLikePath = RegExp(r'^[a-zA-Z]:\\.*').hasMatch(cleanPath) || // C:\path
+                       RegExp(r'^\\\\[^\\]+\\.*').hasMatch(cleanPath); // \\server\share
+        
+        // Additional check: if it looks like a path, it should contain backslashes or be a file with extension
+        if (looksLikePath) {
+          looksLikePath = cleanPath.contains('\\') || RegExp(r'.*\.[a-zA-Z0-9]{1,10}$').hasMatch(cleanPath);
+        }
       } else {
         // Unix-like paths: /path/to/file (but be more strict - must have at least one slash after the root)
         // Also check for common macOS paths like /Users/, /Applications/, /System/, etc.
