@@ -13,13 +13,16 @@ class AppDelegate: FlutterAppDelegate {
   }
   
   override func applicationDidFinishLaunching(_ notification: Notification) {
+    print("🚀 AppDelegate: applicationDidFinishLaunching called")
     super.applicationDidFinishLaunching(notification)
     
     // Ensure the app starts with no visible window (menubar-only)
     self.mainFlutterWindow?.orderOut(nil)
-
-    // Register channel using controller.engine messenger with retry to avoid timing issues
+    
+    // Register clipboard channel (PiP channel is registered in MainFlutterWindow)
+    print("📋 AppDelegate: Registering clipboard channel...")
     registerClipboardChannelWithRetry()
+    print("✅ AppDelegate: App startup completed")
   }
 
   private func registerClipboardChannelWithRetry(_ attempt: Int = 0) {
@@ -51,6 +54,8 @@ class AppDelegate: FlutterAppDelegate {
       print("❌ Failed to register native_file_clipboard channel: FlutterViewController not available")
     }
   }
+
+
 
   private func putFilesToClipboard(filePaths: [String], result: @escaping FlutterResult) {
     let pasteboard = NSPasteboard.general

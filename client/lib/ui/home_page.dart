@@ -7,6 +7,7 @@ import 'package:shared_clipboard/services/socket_service.dart';
 import 'package:shared_clipboard/services/webrtc_service.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
+import 'package:shared_clipboard/services/pip_service.dart';
 import 'package:shared_clipboard/core/logger.dart';
 import 'package:shared_clipboard/core/constants.dart';
 import 'package:window_manager/window_manager.dart';
@@ -66,6 +67,7 @@ class _HomePageState extends State<HomePage> {
   late WebRTCService _webrtcService;
   late FileTransferService _fileTransferService;
   final NotificationService _notificationService = NotificationService();
+  final PipService _pipService = PipService();
   final AppLogger _logger = logTag('HOME');
   bool _isInitialized = false;
   bool _isLoadingDevices = true; // Track device discovery loading state
@@ -189,6 +191,19 @@ class _HomePageState extends State<HomePage> {
     // Set up callback for download progress updates
     _webrtcService.onDownloadProgress = (String fileName, double progress) {
       _logger.i('Download progress callback: $fileName at ${(progress * 100).toInt()}%');
+      // macOS: start PiP at beginning and update progress continuously
+      if (Platform.isMacOS) {
+        print('HOME: 🖥️ macOS detected, handling PiP for progress: ${(progress * 100).toInt()}%');
+        if (progress <= 0.0) {
+          print('HOME: 🚀 Starting PiP (progress <= 0)');
+          _pipService.start();
+        } else {
+          print('HOME: 📊 Updating PiP progress to ${(progress * 100).toInt()}%');
+        }
+        _pipService.updateProgress(progress);
+      } else {
+        print('HOME: ❌ Not macOS, skipping PiP');
+      }
       _updateDownloadProgress(fileName, progress);
       
       // Update pending request status to show downloading with file name
@@ -200,7 +215,11 @@ class _HomePageState extends State<HomePage> {
     
     // Set up callback for download completion
     _webrtcService.onDownloadComplete = () {
-      _logger.i('Download complete callback');
+      print('HOME: 🏁 Download completed');
+      if (Platform.isMacOS) {
+        print('HOME: 🛑 Stopping PiP (download complete)');
+        _pipService.stop();
+      }
       _clearDownloadProgress();
       
       // Clear requesting state and process next queued request
