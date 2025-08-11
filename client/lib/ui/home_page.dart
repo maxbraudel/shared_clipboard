@@ -465,10 +465,22 @@ class _HomePageState extends State<HomePage> {
                 color: Colors.white,
                 child: Row(
                   children: [
-                    // Drag area for moving the window
-                    const Expanded(
+                    // Drag area for moving the window with centered title in black
+                    Expanded(
                       child: DragToMoveArea(
-                        child: SizedBox(height: 40),
+                        child: Container(
+                          height: 40,
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: const Text(
+                            'Last Shared Clipboard',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                     WindowCaptionButton.minimize(
@@ -505,7 +517,7 @@ class _HomePageState extends State<HomePage> {
           : AppBar(
               title: const Text('Last Shared Clipboard'),
               backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
+              foregroundColor: Colors.black, // Title color to black
             ),
       body: Container(
         color: Colors.grey[50],
