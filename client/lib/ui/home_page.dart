@@ -515,7 +515,7 @@ class _HomePageState extends State<HomePage> {
               ),
             )
           : AppBar(
-              title: const Text('Last Shared Clipboard'),
+              title: const Text('Shared Clipboard'),
               backgroundColor: Colors.blue,
               foregroundColor: Colors.black, // Title color to black
             ),
