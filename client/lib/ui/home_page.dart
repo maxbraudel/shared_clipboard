@@ -458,11 +458,55 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Last Shared Clipboard'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
-      ),
+      appBar: Platform.isWindows
+          ? PreferredSize(
+              preferredSize: const Size.fromHeight(40),
+              child: Container(
+                color: Colors.white,
+                child: Row(
+                  children: [
+                    // Drag area for moving the window
+                    const Expanded(
+                      child: DragToMoveArea(
+                        child: SizedBox(height: 40),
+                      ),
+                    ),
+                    WindowCaptionButton.minimize(
+                      brightness: Brightness.light, // dark icons on light background
+                      onPressed: () => windowManager.minimize(),
+                    ),
+                    WindowCaptionButton.maximize(
+                      brightness: Brightness.light,
+                      onPressed: () async {
+                        final isMax = await windowManager.isMaximized();
+                        if (isMax) {
+                          await windowManager.unmaximize();
+                        } else {
+                          await windowManager.maximize();
+                        }
+                      },
+                    ),
+                    WindowCaptionButton.close(
+                      brightness: Brightness.light,
+                      onPressed: () async {
+                        // Respect preventClose; hide instead of close
+                        final prevent = await windowManager.isPreventClose();
+                        if (prevent) {
+                          await windowManager.hide();
+                        } else {
+                          await windowManager.close();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : AppBar(
+              title: const Text('Last Shared Clipboard'),
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+            ),
       body: Container(
         color: Colors.grey[50],
         padding: const EdgeInsets.all(16),

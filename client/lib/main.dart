@@ -1,34 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_clipboard/ui/home_page.dart';
 import 'package:shared_clipboard/services/tray_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
 import 'package:window_manager/window_manager.dart';
+import 'dart:io' show Platform;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // hotkey_manager does not require explicit ensureInitialized on desktop
   
-  // Set system UI overlay style for dark navigation buttons on light background
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.dark, // Dark icons on light background
-    statusBarBrightness: Brightness.light, // Light status bar
-    systemNavigationBarColor: Colors.white,
-    systemNavigationBarIconBrightness: Brightness.dark,
-  ));
-  
   // Initialize window manager
   await windowManager.ensureInitialized();
   
   // Configure window options but don't show yet
-  WindowOptions windowOptions = const WindowOptions(
-    size: Size(1000, 700),
-    minimumSize: Size(700, 700),
+  WindowOptions windowOptions = WindowOptions(
+    size: const Size(1000, 700),
+    minimumSize: const Size(700, 700),
     center: true,
     backgroundColor: Colors.white,
     skipTaskbar: true,
-    titleBarStyle: TitleBarStyle.normal,
+    // On Windows, hide the native title bar so we can render custom black caption buttons
+    titleBarStyle: Platform.isWindows ? TitleBarStyle.hidden : TitleBarStyle.normal,
   );
   
   // Wait until ready but keep hidden
