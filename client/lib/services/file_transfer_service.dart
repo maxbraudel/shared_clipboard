@@ -80,8 +80,10 @@ class FileTransferService {
         // Windows paths: C:\, D:\, \\server\share, etc.
         looksLikePath = RegExp(r'^([a-zA-Z]:\\|\\\\).*').hasMatch(cleanPath);
       } else {
-        // Unix-like paths: /path/to/file
-        looksLikePath = RegExp(r'^/.*').hasMatch(cleanPath);
+        // Unix-like paths: /path/to/file (but be more strict - must have at least one slash after the root)
+        // Also check for common macOS paths like /Users/, /Applications/, /System/, etc.
+        looksLikePath = RegExp(r'^/(Users|Applications|System|Library|Volumes|private|usr|bin|etc|var|tmp)/.*').hasMatch(cleanPath) ||
+                       RegExp(r'^/.*\.[a-zA-Z0-9]{1,10}$').hasMatch(cleanPath); // or ends with file extension
       }
       
       if (looksLikePath) {
