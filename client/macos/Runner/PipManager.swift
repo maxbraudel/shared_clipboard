@@ -33,6 +33,26 @@ class PipManager: NSObject {
             setupPiP()
         }
     }
+
+    // MARK: - Animation Helpers
+    private func fadeIn(view: NSView, duration: TimeInterval = 1.0, delay: TimeInterval = 0.0) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard let superview = view.superview else {
+                // If not in hierarchy yet, try again shortly to avoid a jump
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    self.fadeIn(view: view, duration: duration, delay: 0)
+                }
+                return
+            }
+            if superview.wantsLayer == false { superview.wantsLayer = true }
+            if view.wantsLayer == false { view.wantsLayer = true }
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = duration
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                view.animator().alphaValue = 1.0
+            }
+        }
+    }
     
     private func setupPiP() {
         print("🎬 PipManager: Setting up AVKit PiP with sample buffer display layer...")
@@ -197,6 +217,8 @@ class PipManager: NSObject {
              container.wantsLayer = true
              container.layer?.backgroundColor = NSColor.clear.cgColor
              container.translatesAutoresizingMaskIntoConstraints = false
+             // Prepare for fade-in to avoid flicker on appearance
+             container.alphaValue = 0.0
 
              let progress = ProgressView(frame: container.bounds)
              // Initialize with current progress (already normalized 0–1)
@@ -223,6 +245,10 @@ class PipManager: NSObject {
          if pipVC.responds(to: sel) {
              print("🎬 Presenting private PiP with custom view")
              _ = pipVC.perform(sel, with: contentVC)
+             // Fade in the content to mitigate initial flicker
+             if let view = self.privateContentVC?.view {
+                 self.fadeIn(view: view, duration: 1.0)
+             }
          } else {
              print("❌ Private PIPViewController missing presentViewControllerAsPictureInPicture:")
          }
@@ -376,8 +402,7 @@ class PipManager: NSObject {
     }
 
     private func writeDump(_ text: String) {
-        // Write to a sandbox-safe location (Documents inside app container),
-        // then fall back to Application Support, then NSTemporaryDirectory.
+        // Write to Documents, then Application Support, then Temporary
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd_HHmmss"
         let stamp = formatter.string(from: Date())
@@ -395,33 +420,34 @@ class PipManager: NSObject {
         }
 
         // 1) Documents (sandbox-safe)
-        var baseURL = fm.urls(for: .documentDirectory, in: .userDomainMask).first
-        if let base = baseURL, ensureDir(base) != nil {
-            let url = base.appendingPathComponent(fileName)
+        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first,
+           ensureDir(docs) != nil {
+            let url = docs.appendingPathComponent(fileName)
             if (try? text.data(using: .utf8)?.write(to: url)) != nil {
                 print("📝 Wrote PIP runtime dump to: \(url.path)")
                 return
             }
         }
 
-        // 2) Application Support (create app-specific folder)
-        baseURL = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent(Bundle.main.bundleIdentifier ?? "PIPDump", isDirectory: true)
-        if let base = baseURL, ensureDir(base) != nil {
-            let url = base.appendingPathComponent(fileName)
-            if (try? text.data(using: .utf8)?.write(to: url)) != nil {
-                print("📝 Wrote PIP runtime dump to: \(url.path)")
-                return
+        // 2) Application Support/<bundle id>
+        if let appSup = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            let base = appSup.appendingPathComponent(Bundle.main.bundleIdentifier ?? "SharedClipboard", isDirectory: true)
+            if ensureDir(base) != nil {
+                let url = base.appendingPathComponent(fileName)
+                if (try? text.data(using: .utf8)?.write(to: url)) != nil {
+                    print("📝 Wrote PIP runtime dump to: \(url.path)")
+                    return
+                }
             }
         }
 
         // 3) Temporary directory
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
         let url = tmp.appendingPathComponent(fileName)
-        do {
-            try text.data(using: .utf8)?.write(to: url)
+        if (try? text.data(using: .utf8)?.write(to: url)) != nil {
             print("📝 Wrote PIP runtime dump to temporary folder: \(url.path)")
-        } catch {
-            print("❌ Failed to write PIP runtime dump (tmp fallback): \(error)")
+        } else {
+            print("❌ Failed to write PIP runtime dump to any location")
         }
     }
     
