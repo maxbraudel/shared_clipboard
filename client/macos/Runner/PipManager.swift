@@ -3,6 +3,9 @@ import Cocoa
 import AVFoundation
 import AVKit
 import Darwin
+import ObjectiveC.runtime
+
+private let PipLoggingEnabled = false
 
 @available(macOS 10.15, *)
 class PipManager: NSObject {
@@ -11,12 +14,14 @@ class PipManager: NSObject {
     private var pipController: AVPictureInPictureController?
     private var sampleBufferDisplayLayer: AVSampleBufferDisplayLayer?
     private var currentProgress: Double = 0.0
+    private var currentFileName: String? = nil
     private var displayTimer: Timer?
 
     // Private PIP.framework runtime objects
     private var privatePipVCClass: NSViewController.Type?
     private var privatePipVC: NSViewController?
     private var privateContentVC: NSViewController?
+    private var privateProgressView: ProgressView?
     private var privateFrameworkLoaded: Bool = false
     
     override init() {
@@ -72,29 +77,104 @@ class PipManager: NSObject {
     }
 
     private class ProgressView: NSView {
-         var progress: Double = 0.0 { didSet { needsDisplay = true } }
-         override var isFlipped: Bool { true }
-         override func draw(_ dirtyRect: NSRect) {
-             super.draw(dirtyRect)
-             guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-             // Background
-             ctx.setFillColor(CGColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 0.95))
-             ctx.fill(bounds)
-             // Bar background
-             let barRect = CGRect(x: 20, y: bounds.height/2 - 10, width: bounds.width - 40, height: 20)
-             ctx.setFillColor(CGColor(red: 0.25, green: 0.25, blue: 0.25, alpha: 1))
-             let bgPath = CGPath(roundedRect: barRect, cornerWidth: 10, cornerHeight: 10, transform: nil)
-             ctx.addPath(bgPath)
-             ctx.fillPath()
-             // Fill
-             let fillWidth = barRect.width * CGFloat(progress / 100.0)
-             let fillRect = CGRect(x: barRect.minX, y: barRect.minY, width: fillWidth, height: barRect.height)
-             ctx.setFillColor(CGColor(red: 0.0, green: 0.55, blue: 1.0, alpha: 1))
-             let fillPath = CGPath(roundedRect: fillRect, cornerWidth: 10, cornerHeight: 10, transform: nil)
-             ctx.addPath(fillPath)
-             ctx.fillPath()
-         }
+        var progress: Double = 0.0 { didSet { needsDisplay = true } }
+        var fileName: String? { didSet { needsDisplay = true } }
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = true
+            layer?.backgroundColor = NSColor.clear.cgColor
+            translatesAutoresizingMaskIntoConstraints = false
+        }
+
+        required init?(coder: NSCoder) {
+            super.init(coder: coder)
+            wantsLayer = true
+            layer?.backgroundColor = NSColor.clear.cgColor
+            autoresizingMask = [.width, .height]
+            translatesAutoresizingMaskIntoConstraints = false
+        }
+
+        override var isFlipped: Bool { true }
+
+        override func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+            needsDisplay = true
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            super.draw(dirtyRect)
+
+            let bounds = self.bounds.insetBy(dx: 8, dy: 8)
+
+            // Background with rounded corners
+            let bgPath = NSBezierPath(roundedRect: bounds, xRadius: 12, yRadius: 12)
+            NSColor.windowBackgroundColor.withAlphaComponent(0.75).setFill()
+            bgPath.fill()
+
+            // Title
+            let title = "Downloading…"
+            let titleAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: max(12, min(18, bounds.height * 0.12)), weight: .semibold),
+                .foregroundColor: NSColor.labelColor
+            ]
+            let titleSize = title.size(withAttributes: titleAttrs)
+            let titleOrigin = CGPoint(x: bounds.midX - titleSize.width / 2, y: bounds.minY + 10)
+            title.draw(at: titleOrigin, withAttributes: titleAttrs)
+
+            // Filename (below title)
+            if let name = fileName {
+                let para = NSMutableParagraphStyle()
+                para.alignment = .center
+                para.lineBreakMode = .byTruncatingMiddle
+                let fileAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: max(10, min(14, bounds.height * 0.11)), weight: .regular),
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                    .paragraphStyle: para
+                ]
+                // Rect centered horizontally, positioned just above the progress bar area
+                let fileRectHeight = max(14, bounds.height * 0.14)
+                let fileRect = NSRect(x: bounds.minX + 10,
+                                      y: titleOrigin.y + titleSize.height + 4,
+                                      width: bounds.width - 20,
+                                      height: fileRectHeight)
+                (name as NSString).draw(in: fileRect, withAttributes: fileAttrs)
+            }
+
+            // Progress bar dimensions responsive to view size
+            let barWidth = max(60, bounds.width * 0.8)
+            let barHeight = max(8, min(18, bounds.height * 0.14))
+            let barX = bounds.midX - barWidth / 2
+            let barY = bounds.midY - barHeight / 2
+            let barRect = NSRect(x: barX, y: barY, width: barWidth, height: barHeight)
+
+            // Track (rounded container)
+            let trackPath = NSBezierPath(roundedRect: barRect, xRadius: barHeight / 2, yRadius: barHeight / 2)
+            NSColor.controlBackgroundColor.withAlphaComponent(0.85).setFill()
+            trackPath.fill()
+
+            // Fill (no corner radius). Clip to the rounded track to avoid spillover on corners.
+            let clamped = CGFloat(max(0.0, min(1.0, progress)))
+            let fillRect = NSRect(x: barRect.minX, y: barRect.minY, width: barRect.width * clamped, height: barRect.height)
+            NSColor.controlAccentColor.setFill()
+            NSGraphicsContext.saveGraphicsState()
+            trackPath.addClip()
+            NSBezierPath(rect: fillRect).fill()
+            NSGraphicsContext.restoreGraphicsState()
+
+            // Percentage label above the bar
+            let percent = Int(round(progress * 100))
+            let percentText = "\(percent)%"
+            let percentAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: max(11, min(16, bounds.height * 0.12)), weight: .medium),
+                .foregroundColor: NSColor.secondaryLabelColor
+            ]
+            let percentSize = percentText.size(withAttributes: percentAttrs)
+            let percentOrigin = CGPoint(x: bounds.midX - percentSize.width / 2, y: barRect.maxY + 6)
+            percentText.draw(at: percentOrigin, withAttributes: percentAttrs)
+        }
     }
+    
 
     private func presentPrivatePiP() {
          guard privateFrameworkLoaded, let PIPVCType = privatePipVCClass else { return }
@@ -102,12 +182,39 @@ class PipManager: NSObject {
              let pipVC = PIPVCType.init()
              // Configure via KVC to avoid compile-time dependency
              pipVC.setValue(true, forKey: "playing")
-             pipVC.setValue(NSSize(width: 3, height: 2), forKey: "aspectRatio")
              pipVC.setValue("Download", forKey: "title")
+             // Example: lock PiP to 400x250 and disable resizing
+            pipVC.setValue(NSSize(width: 370, height: 185), forKey: "minSize")
+            pipVC.setValue(NSSize(width: 370, height: 185), forKey: "maxSize")
+            pipVC.setValue(false, forKey: "userCanResize")
+            pipVC.setValue(NSSize(width: 4, height: 2), forKey: "aspectRatio")
              self.privatePipVC = pipVC
 
              let contentVC = NSViewController()
-             contentVC.view = ProgressView(frame: NSRect(x: 0, y: 0, width: 300, height: 200))
+             // Container view that will resize to PiP content area
+             let container = NSView(frame: NSRect(x: 0, y: 0, width: 370, height: 185))
+             container.wantsLayer = true
+             container.layer?.backgroundColor = NSColor.clear.cgColor
+             container.translatesAutoresizingMaskIntoConstraints = false
+
+             let progress = ProgressView(frame: container.bounds)
+             // Initialize with current progress (normalize 0–100 to 0–1)
+             progress.progress = max(0.0, min(1.0, currentProgress / 100.0))
+             // Initialize with current file name if available
+             if let name = currentFileName {
+                 progress.fileName = (name as NSString).lastPathComponent
+             }
+             container.addSubview(progress)
+             // Pin progress view to all edges of the container
+             NSLayoutConstraint.activate([
+                 progress.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                 progress.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                 progress.topAnchor.constraint(equalTo: container.topAnchor),
+                 progress.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+             ])
+
+             contentVC.view = container
+             self.privateProgressView = progress
              self.privateContentVC = contentVC
          }
          guard let pipVC = privatePipVC, let contentVC = privateContentVC else { return }
@@ -126,6 +233,195 @@ class PipManager: NSObject {
          if pipVC.responds(to: sel) {
              _ = pipVC.perform(sel, with: contentVC)
          }
+    }
+
+    // MARK: - Runtime Introspection Helpers
+    private func dumpPIPClass(_ c: AnyClass) {
+        let className = NSStringFromClass(c)
+        let superName = class_getSuperclass(c).map { NSStringFromClass($0) } ?? "(none)"
+        print("🔎 Class: \(className)  super: \(superName)")
+
+        var methodCount: UInt32 = 0
+        if let methodList = class_copyMethodList(c, &methodCount) {
+            if methodCount > 0 { print("   Methods (\(methodCount)):") }
+            for i in 0..<Int(methodCount) {
+                let m = methodList[i]
+                let sel = method_getName(m)
+                let name = NSStringFromSelector(sel)
+                if let enc = method_getTypeEncoding(m) {
+                    print("     • \(name)  enc: \(String(cString: enc))")
+                } else {
+                    print("     • \(name)")
+                }
+            }
+            free(methodList)
+        }
+
+        var propCount: UInt32 = 0
+        if let propList = class_copyPropertyList(c, &propCount) {
+            if propCount > 0 { print("   Properties (\(propCount)):") }
+            for i in 0..<Int(propCount) {
+                let prop = propList[i]
+                let cname = property_getName(prop)
+                print("     • \(String(cString: cname))")
+            }
+            free(propList)
+        }
+    }
+
+    func dumpPrivatePIPMetadata() {
+        guard privateFrameworkLoaded else {
+            print("ℹ️ Private PIP framework not loaded; nothing to dump")
+            return
+        }
+
+        // Gather all runtime classes and filter by prefix "PIP"
+        let numClasses = objc_getClassList(nil, 0)
+        if numClasses <= 0 {
+            print("ℹ️ No runtime classes found via objc_getClassList")
+            return
+        }
+        let buffer = UnsafeMutablePointer<AnyClass?>.allocate(capacity: Int(numClasses))
+        defer { buffer.deallocate() }
+        let realCount = objc_getClassList(AutoreleasingUnsafeMutablePointer(buffer), numClasses)
+        print("🔎 Scanning \(realCount) classes for PIP* …")
+
+        var pipClasses: [AnyClass] = []
+        for i in 0..<Int(realCount) {
+            if let cls: AnyClass = buffer[i] {
+                let name = NSStringFromClass(cls)
+                if name.hasPrefix("PIP") {
+                    pipClasses.append(cls)
+                }
+            }
+        }
+
+        if pipClasses.isEmpty {
+            print("ℹ️ No PIP* classes discovered in runtime")
+        }
+        for cls in pipClasses {
+            dumpPIPClass(cls)
+        }
+    }
+
+    // MARK: - Export Introspection to File
+    private func exportPrivatePIPMetadata() {
+        guard privateFrameworkLoaded else { return }
+
+        // Build a textual dump similar to console but captured in a buffer
+        var output = "# PIP.framework Runtime Introspection\n\n"
+
+        let numClasses = objc_getClassList(nil, 0)
+        if numClasses <= 0 {
+            output += "No runtime classes found via objc_getClassList\n"
+            writeDump(output)
+            return
+        }
+        let buffer = UnsafeMutablePointer<AnyClass?>.allocate(capacity: Int(numClasses))
+        defer { buffer.deallocate() }
+        let realCount = objc_getClassList(AutoreleasingUnsafeMutablePointer(buffer), numClasses)
+        output += "Scanning \\(" + String(realCount) + ") classes for PIP* …\n\n"
+
+        var pipClasses: [AnyClass] = []
+        for i in 0..<Int(realCount) {
+            if let cls: AnyClass = buffer[i] {
+                let name = NSStringFromClass(cls)
+                if name.hasPrefix("PIP") {
+                    pipClasses.append(cls)
+                }
+            }
+        }
+
+        if pipClasses.isEmpty {
+            output += "No PIP* classes discovered in runtime\n"
+        }
+
+        func appendClass(_ c: AnyClass, to s: inout String) {
+            let className = NSStringFromClass(c)
+            let superName = class_getSuperclass(c).map { NSStringFromClass($0) } ?? "(none)"
+            s += "Class: \(className)  super: \(superName)\n"
+
+            var methodCount: UInt32 = 0
+            if let methodList = class_copyMethodList(c, &methodCount) {
+                if methodCount > 0 { s += "  Methods (\(methodCount)):\n" }
+                for i in 0..<Int(methodCount) {
+                    let m = methodList[i]
+                    let sel = method_getName(m)
+                    let name = NSStringFromSelector(sel)
+                    if let enc = method_getTypeEncoding(m) {
+                        s += "    • \(name)  enc: \(String(cString: enc))\n"
+                    } else {
+                        s += "    • \(name)\n"
+                    }
+                }
+                free(methodList)
+            }
+
+            var propCount: UInt32 = 0
+            if let propList = class_copyPropertyList(c, &propCount) {
+                if propCount > 0 { s += "  Properties (\(propCount)):\n" }
+                for i in 0..<Int(propCount) {
+                    let prop = propList[i]
+                    let cname = property_getName(prop)
+                    s += "    • \(String(cString: cname))\n"
+                }
+                free(propList)
+            }
+            s += "\n"
+        }
+
+        for cls in pipClasses { appendClass(cls, to: &output) }
+        writeDump(output)
+    }
+
+    private func writeDump(_ text: String) {
+        // Write to a sandbox-safe location (Documents inside app container),
+        // then fall back to Application Support, then NSTemporaryDirectory.
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let stamp = formatter.string(from: Date())
+        let fileName = "PIP_runtime_dump_\(stamp).txt"
+
+        let fm = FileManager.default
+
+        func ensureDir(_ url: URL) -> URL? {
+            do {
+                try fm.createDirectory(at: url, withIntermediateDirectories: true)
+                return url
+            } catch {
+                return nil
+            }
+        }
+
+        // 1) Documents (sandbox-safe)
+        var baseURL = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+        if let base = baseURL, ensureDir(base) != nil {
+            let url = base.appendingPathComponent(fileName)
+            if (try? text.data(using: .utf8)?.write(to: url)) != nil {
+                print("📝 Wrote PIP runtime dump to: \(url.path)")
+                return
+            }
+        }
+
+        // 2) Application Support (create app-specific folder)
+        baseURL = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent(Bundle.main.bundleIdentifier ?? "PIPDump", isDirectory: true)
+        if let base = baseURL, ensureDir(base) != nil {
+            let url = base.appendingPathComponent(fileName)
+            if (try? text.data(using: .utf8)?.write(to: url)) != nil {
+                print("📝 Wrote PIP runtime dump to: \(url.path)")
+                return
+            }
+        }
+
+        // 3) Temporary directory
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+        let url = tmp.appendingPathComponent(fileName)
+        do {
+            try text.data(using: .utf8)?.write(to: url)
+            print("📝 Wrote PIP runtime dump to temporary folder: \(url.path)")
+        } catch {
+            print("❌ Failed to write PIP runtime dump (tmp fallback): \(error)")
+        }
     }
     
     private func createProgressFrame() -> CVPixelBuffer? {
@@ -247,28 +543,31 @@ class PipManager: NSObject {
     }
     
     func start() {
-        print("🎬 PipManager: Starting PiP...")
+        if PipLoggingEnabled { print("🎬 PipManager: Starting PiP...") }
         // Prefer private PIP (no controls) if available
         if privateFrameworkLoaded {
             DispatchQueue.main.async {
+                // Dump selectors/type encodings for private PIP classes once
+                if PipLoggingEnabled { self.dumpPrivatePIPMetadata() }
+                if PipLoggingEnabled { self.exportPrivatePIPMetadata() }
                 self.presentPrivatePiP()
-                print("✅ Private PiP presented")
+                if PipLoggingEnabled { print("✅ Private PiP presented") }
             }
             return
         }
         
         guard #available(macOS 10.15, *) else {
-            print("❌ PiP requires macOS 10.15 or later")
+            if PipLoggingEnabled { print("❌ PiP requires macOS 10.15 or later") }
             return
         }
         
         guard let pipController = pipController else {
-            print("❌ PiP controller not available")
+            if PipLoggingEnabled { print("❌ PiP controller not available") }
             return
         }
         
         guard AVPictureInPictureController.isPictureInPictureSupported() else {
-            print("❌ Picture in Picture is not supported on this device")
+            if PipLoggingEnabled { print("❌ Picture in Picture is not supported on this device") }
             return
         }
         
@@ -280,16 +579,16 @@ class PipManager: NSObject {
             
             // Start PiP (AVKit)
             pipController.startPictureInPicture()
-            print("✅ PiP started successfully")
+            if PipLoggingEnabled { print("✅ PiP started successfully") }
         }
     }
     
     func stop() {
-        print("🛑 PipManager: Stopping PiP...")
+        if PipLoggingEnabled { print("🛑 PipManager: Stopping PiP...") }
         if privateFrameworkLoaded {
             DispatchQueue.main.async {
                 self.dismissPrivatePiP()
-                print("✅ Private PiP dismissed")
+                if PipLoggingEnabled { print("✅ Private PiP dismissed") }
             }
             return
         }
@@ -299,17 +598,31 @@ class PipManager: NSObject {
         DispatchQueue.main.async {
             self.stopFrameTimer()
             self.pipController?.stopPictureInPicture()
-            print("✅ PiP stopped successfully")
+            if PipLoggingEnabled { print("✅ PiP stopped successfully") }
         }
     }
     
     func updateProgress(_ progress: Double) {
-        print("📊 PipManager: Updating progress to \(progress)%")
+        if PipLoggingEnabled { print("📊 PipManager: Updating progress to \(progress)%") }
         currentProgress = progress
         
-        // The progress will be rendered in the next frame update
-        if privateFrameworkLoaded, let view = privateContentVC?.view as? ProgressView {
-            view.progress = progress
+        // Update custom PiP view immediately (on main thread)
+        if privateFrameworkLoaded, let view = privateProgressView {
+            let normalized = max(0.0, min(1.0, progress / 100.0))
+            DispatchQueue.main.async {
+                view.progress = normalized
+            }
+        }
+    }
+
+    func updateFileName(_ name: String) {
+        if PipLoggingEnabled { print("📄 PipManager: Updating file name to \(name)") }
+        currentFileName = name
+        if privateFrameworkLoaded, let view = privateProgressView {
+            let displayName = (name as NSString).lastPathComponent
+            DispatchQueue.main.async {
+                view.fileName = displayName
+            }
         }
     }
     

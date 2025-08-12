@@ -1,0 +1,2091 @@
+# PIP.framework Runtime Introspection
+
+Scanning \(67446) classes for PIP* …
+
+Class: PIPhotosPipelineBuilder  super: NSObject
+  Methods (9):
+    • asset  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • identifier  enc: @16@0:8
+    • init  enc: @16@0:8
+    • pipelineIdentifier  enc: @16@0:8
+    • schemaIdentifier  enc: @16@0:8
+    • buildPipeline:error:  enc: B32@0:8@16o^@24
+    • buildPhotosPipeline:error:  enc: B32@0:8@16o^@24
+    • initWithPipelineDescriptor:  enc: @24@0:8@16
+  Properties (4):
+    • pipelineIdentifier
+    • schemaIdentifier
+    • asset
+    • identifier
+
+Class: PIPhotosPipelineBuilder_2025_1  super: PIPhotosPipelineBuilder
+  Methods (1):
+    • buildPipeline:error:  enc: B32@0:8@16o^@24
+
+Class: PIPhotosPipelineFactory  super: NSObject
+  Methods (1):
+    • init  enc: @16@0:8
+
+Class: PIPhotosPipelineDescriptor  super: NSObject
+  Methods (10):
+    • initWithAsset:  enc: @24@0:8@16
+    • asset  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • pipelineIdentifier  enc: @16@0:8
+    • setPipelineIdentifier:  enc: v24@0:8@16
+    • schemaIdentifier  enc: @16@0:8
+    • basePipelineVersion  enc: @16@0:8
+    • setBasePipelineVersion:  enc: v24@0:8@16
+    • setSchemaIdentifier:  enc: v24@0:8@16
+  Properties (4):
+    • pipelineIdentifier
+    • basePipelineVersion
+    • schemaIdentifier
+    • asset
+
+Class: PIPipelineFilters  super: NSObject
+
+Class: PIParallaxAsset  super: NSObject
+  Methods (28):
+    • fileURL  enc: @16@0:8
+    • description  enc: @16@0:8
+    • cacheURL  enc: @16@0:8
+    • isInCloud  enc: B16@0:8
+    • initWithFileURL:  enc: @24@0:8@16
+    • .cxx_destruct  enc: v16@0:8
+    • localIdentifier  enc: @16@0:8
+    • loadCropRectsWithResultHandler:  enc: i24@0:8@?16
+    • acceptableCropRect  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • cancelCropRectsRequest:  enc: v20@0:8i16
+    • cancelFocalLengthRequest:  enc: v20@0:8i16
+    • cancelMotionScoreRequest:  enc: v20@0:8i16
+    • cancelParallaxResourceRequest:  enc: v20@0:8i16
+    • cancelPetsRegionsRequest:  enc: v20@0:8i16
+    • clearSegmentationResourceCacheWithError:  enc: B24@0:8^@16
+    • faceRegions  enc: @16@0:8
+    • gazeAreaRect  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • loadFocalLengthIn35mm:  enc: i24@0:8@?16
+    • loadMotionScore:  enc: i24@0:8@?16
+    • loadParallaxResource:options:resultHandler:  enc: i40@0:8q16@24@?32
+    • loadPetsRegionsWithOptions:resultHandler:  enc: i32@0:8@16@?24
+    • petRegions  enc: @16@0:8
+    • preferredCropRect  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • segmentationResourceURL  enc: @16@0:8
+    • setIsInCloud:  enc: v20@0:8B16
+    • supportsSegmentationResourceCaching  enc: B16@0:8
+    • updateSegmentationResource:  enc: v24@0:8@?16
+    • setCacheURL:  enc: v24@0:8@16
+  Properties (15):
+    • fileURL
+    • cacheURL
+    • isInCloud
+    • localIdentifier
+    • acceptableCropRect
+    • preferredCropRect
+    • gazeAreaRect
+    • faceRegions
+    • petRegions
+    • hash
+    • superclass
+    • description
+    • debugDescription
+    • supportsSegmentationResourceCaching
+    • segmentationResourceURL
+
+Class: PIPhotosPipelineHDRFilters  super: NSObject
+
+Class: PIPNCropUtilitiesWrapper  super: NSObject
+
+Class: PIPerfPowerService  super: NSObject
+  Methods (10):
+    • operation  enc: q16@0:8
+    • setRecord:  enc: v24@0:8@16
+    • record  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • identifier  enc: @16@0:8
+    • init  enc: @16@0:8
+    • measureBlock:  enc: v24@0:8@?16
+    • beginMeasuring  enc: v16@0:8
+    • endMeasuring  enc: v16@0:8
+    • initWithIdentifier:operation:  enc: @32@0:8@16q24
+  Properties (3):
+    • record
+    • identifier
+    • operation
+
+Class: PIPerfPowerServiceIdentifier  super: NSObject
+  Methods (3):
+    • initWithIdentifier:  enc: @24@0:8^{PPSTelemetryIdentifier=}16
+    • init  enc: @16@0:8
+    • telemetryId  enc: ^{PPSTelemetryIdentifier=}16@0:8
+  Properties (1):
+    • telemetryId
+
+Class: PIPerfPowerRecord  super: NSObject
+  Methods (10):
+    • setOperation:  enc: v24@0:8q16
+    • operation  enc: q16@0:8
+    • payload  enc: @16@0:8
+    • startTime  enc: @16@0:8
+    • setEndTime:  enc: v24@0:8@16
+    • setIdentifier:  enc: v24@0:8^{PPSTelemetryIdentifier=}16
+    • endTime  enc: @16@0:8
+    • setStartTime:  enc: v24@0:8@16
+    • .cxx_destruct  enc: v16@0:8
+    • identifier  enc: ^{PPSTelemetryIdentifier=}16@0:8
+  Properties (5):
+    • identifier
+    • operation
+    • startTime
+    • endTime
+    • payload
+
+Class: PIParallaxStyleEvaluationContext  super: NSObject
+  Methods (23):
+    • setVisibleRect:  enc: v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16
+    • setParameters:  enc: v24@0:8@16
+    • setCache:  enc: v24@0:8@16
+    • parameters  enc: @16@0:8
+    • visibleRect  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • backgroundImage  enc: @16@0:8
+    • cache  enc: @16@0:8
+    • setBackgroundImage:  enc: v24@0:8@16
+    • outputImage  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • debugDescription  enc: @16@0:8
+    • setInputImage:  enc: v24@0:8@16
+    • inputImage  enc: @16@0:8
+    • setRenderScale:  enc: v24@0:8d16
+    • renderScale  enc: d16@0:8
+    • setOutputImage:  enc: v24@0:8@16
+    • guideImage  enc: @16@0:8
+    • lightMapImage  enc: @16@0:8
+    • localLightData  enc: @16@0:8
+    • matteImage  enc: @16@0:8
+    • setGuideImage:  enc: v24@0:8@16
+    • setLocalLightData:  enc: v24@0:8@16
+    • setMatteImage:  enc: v24@0:8@16
+  Properties (11):
+    • parameters
+    • inputImage
+    • outputImage
+    • guideImage
+    • matteImage
+    • backgroundImage
+    • localLightData
+    • lightMapImage
+    • cache
+    • visibleRect
+    • renderScale
+
+Class: PIParallaxStyleParameter  super: NSObject
+  Methods (4):
+    • type  enc: @16@0:8
+    • isEqual:  enc: B24@0:8@16
+    • evaluateWithContext:error:  enc: @32@0:8@16o^@24
+    • isEqualToParallaxStyleParameter:  enc: B24@0:8@16
+  Properties (1):
+    • type
+
+Class: PIParallaxStyleBindingParameter  super: PIParallaxStyleParameter
+  Methods (8):
+    • type  enc: @16@0:8
+    • description  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • variableName  enc: @16@0:8
+    • evaluateWithContext:error:  enc: @32@0:8@16o^@24
+    • initWithVariableName:  enc: @24@0:8@16
+    • isEqualToParallaxStyleParameter:  enc: B24@0:8@16
+  Properties (1):
+    • variableName
+
+Class: PIParallaxStyleModeParameter  super: PIParallaxStyleParameter
+  Methods (8):
+    • type  enc: @16@0:8
+    • description  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • initWithMode:  enc: @24@0:8@16
+    • init  enc: @16@0:8
+    • evaluateWithContext:error:  enc: @32@0:8@16o^@24
+    • isEqualToParallaxStyleParameter:  enc: B24@0:8@16
+    • modeValue  enc: @16@0:8
+  Properties (1):
+    • modeValue
+
+Class: PIParallaxStylePointParameter  super: PIParallaxStyleParameter
+  Methods (11):
+    • type  enc: @16@0:8
+    • description  enc: @16@0:8
+    • unit  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • initWithX:Y:  enc: @32@0:8@16@24
+    • xValue  enc: @16@0:8
+    • yValue  enc: @16@0:8
+    • evaluateWithContext:error:  enc: @32@0:8@16o^@24
+    • initWithX:Y:unit:  enc: @40@0:8@16@24@32
+    • isEqualToParallaxStyleParameter:  enc: B24@0:8@16
+  Properties (3):
+    • xValue
+    • yValue
+    • unit
+
+Class: PIParallaxStyleColorParameter  super: PIParallaxStyleParameter
+  Methods (11):
+    • type  enc: @16@0:8
+    • description  enc: @16@0:8
+    • initWithRed:green:blue:alpha:  enc: @48@0:8@16@24@32@40
+    • alphaValue  enc: @16@0:8
+    • redValue  enc: @16@0:8
+    • blueValue  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • greenValue  enc: @16@0:8
+    • evaluateWithContext:error:  enc: @32@0:8@16o^@24
+    • isEqualToParallaxStyleParameter:  enc: B24@0:8@16
+  Properties (4):
+    • redValue
+    • greenValue
+    • blueValue
+    • alphaValue
+
+Class: PIParallaxStyleNumberParameter  super: PIParallaxStyleParameter
+  Methods (10):
+    • type  enc: @16@0:8
+    • description  enc: @16@0:8
+    • numberValue  enc: @16@0:8
+    • initWithNumber:  enc: @24@0:8@16
+    • unit  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • initWithNumber:unit:  enc: @32@0:8@16@24
+    • evaluateWithContext:error:  enc: @32@0:8@16o^@24
+    • isEqualToParallaxStyleParameter:  enc: B24@0:8@16
+  Properties (2):
+    • numberValue
+    • unit
+
+Class: PIParallaxStyleDefinition  super: NSObject
+  Methods (4):
+    • type  enc: @16@0:8
+    • isEqual:  enc: B24@0:8@16
+    • evaluateWithContext:error:  enc: @32@0:8@16o^@24
+    • isEqualToParallaxStyleDefinition:  enc: B24@0:8@16
+  Properties (1):
+    • type
+
+Class: PIParallaxStyleFilterStackDefinition  super: PIParallaxStyleDefinition
+  Methods (10):
+    • type  enc: @16@0:8
+    • description  enc: @16@0:8
+    • filters  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • evaluateWithContext:error:  enc: @32@0:8@16o^@24
+    • initWithStackName:filters:  enc: @32@0:8@16@24
+    • isEqualToParallaxStyleDefinition:  enc: B24@0:8@16
+    • isEqualToParallaxStyleFilterStackDefinition:  enc: B24@0:8@16
+    • stackName  enc: @16@0:8
+  Properties (2):
+    • stackName
+    • filters
+
+Class: PIParallaxStyleFilterDefinition  super: PIParallaxStyleDefinition
+  Methods (10):
+    • type  enc: @16@0:8
+    • parameters  enc: @16@0:8
+    • description  enc: @16@0:8
+    • filterName  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • evaluateWithContext:error:  enc: @32@0:8@16o^@24
+    • initWithFilterName:parameters:  enc: @32@0:8@16@24
+    • isEqualToParallaxStyleDefinition:  enc: B24@0:8@16
+    • isEqualToParallaxStyleFilterDefinition:  enc: B24@0:8@16
+  Properties (2):
+    • filterName
+    • parameters
+
+Class: PIParallaxStyleRecipe  super: NSObject
+  Methods (10):
+    • parameters  enc: @16@0:8
+    • description  enc: @16@0:8
+    • isEqual:  enc: B24@0:8@16
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • backgroundFilters  enc: @16@0:8
+    • foregroundFilters  enc: @16@0:8
+    • initWithParameters:foregroundFilters:backgroundFilters:matteFilters:  enc: @48@0:8@16@24@32@40
+    • isEqualToParallaxStyleRecipe:  enc: B24@0:8@16
+    • matteFilters  enc: @16@0:8
+  Properties (4):
+    • parameters
+    • foregroundFilters
+    • backgroundFilters
+    • matteFilters
+
+Class: PIParallaxLuminanceCalculator  super: NSObject
+  Methods (4):
+    • _imageToAnalyzeForLayerStack:cropToClockArea:error:  enc: @36@0:8@16B24o^@28
+    • calculateClockLuminanceValuesForLayerStack:style:renderer:error:  enc: @48@0:8@16@24@32o^@40
+    • calculateLuminanceValuesForBackdropLayerStack:style:renderer:error:  enc: @48@0:8@16@24@32o^@40
+    • calculateLuminanceValuesForImage:renderer:error:  enc: @40@0:8@16@24o^@32
+
+Class: PIPhotoEditHelper  super: NSObject
+
+Class: PIPortraitVideoRenderer  super: NSObject
+  Methods (13):
+    • setInUse:  enc: v20@0:8B16
+    • quality  enc: i16@0:8
+    • description  enc: @16@0:8
+    • device  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • debugMode  enc: q16@0:8
+    • isInUse  enc: B16@0:8
+    • setLastUseTime:  enc: v24@0:8@16
+    • lastUseTime  enc: @16@0:8
+    • colorSize  enc: {?=qq}16@0:8
+    • disparitySize  enc: {?=qq}16@0:8
+    • initWithDevice:colorSize:disparitySize:quality:debugMode:  enc: @68@0:8@16{?=qq}24{?=qq}40i56q60
+    • prepareToRenderWithMetadata:  enc: v24@0:8@16
+  Properties (7):
+    • device
+    • colorSize
+    • disparitySize
+    • quality
+    • debugMode
+    • inUse
+    • lastUseTime
+
+Class: PIPortraitVideoMetadataSample  super: NSObject
+  Methods (11):
+    • hash  enc: Q16@0:8
+    • isEqual:  enc: B24@0:8@16
+    • .cxx_destruct  enc: v16@0:8
+    • timedMetadata  enc: @16@0:8
+    • setTimedMetadata:  enc: v24@0:8@16
+    • CIImageProcessorDigestObject  enc: @16@0:8
+    • nu_updateDigest:  enc: v24@0:8@16
+    • applyToRenderRequest:  enc: v24@0:8@16
+    • initWithMetadataGroup:majorVersion:minorVersion:error:  enc: @40@0:8@16I24I28o^@32
+    • isEqualToPIPortraitVideoMetadataSample:  enc: B24@0:8@16
+    • valueWithIdentifier:inGroup:ofClass:  enc: @40@0:8@16@24#32
+  Properties (1):
+    • timedMetadata
+
+Class: PIParallaxStyleRecipeArchiver  super: NSObject
+
+Class: PIParallaxLegacyPosterStyle  super: NSObject
+
+Class: PIPosterSettlingEffectLoader  super: NSObject
+
+Class: PIParallaxAssetSettlingEffectOptions  super: NSObject
+  Methods (6):
+    • needsInProcessHandling  enc: B16@0:8
+    • setNeedsInProcessHandling:  enc: v20@0:8B16
+    • isInteractiveRequest  enc: B16@0:8
+    • loadVideoStatusOnly  enc: B16@0:8
+    • setIsInteractiveRequest:  enc: v20@0:8B16
+    • setLoadVideoStatusOnly:  enc: v20@0:8B16
+  Properties (3):
+    • isInteractiveRequest
+    • needsInProcessHandling
+    • loadVideoStatusOnly
+
+Class: PIPhotoEditAdjustmentsVersion  super: NSObject
+  Methods (15):
+    • description  enc: @16@0:8
+    • hash  enc: Q16@0:8
+    • platform  enc: @16@0:8
+    • string  enc: @16@0:8
+    • isEqual:  enc: B24@0:8@16
+    • majorVersion  enc: Q16@0:8
+    • minorVersion  enc: Q16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • compare:  enc: q24@0:8@16
+    • init  enc: @16@0:8
+    • subMinorVersion  enc: Q16@0:8
+    • asOrderedInteger  enc: q16@0:8
+    • initWithMajor:minor:subMinor:  enc: @40@0:8Q16Q24Q32
+    • initWithMajor:minor:subMinor:platform:  enc: @48@0:8Q16Q24Q32@40
+    • isEqualToAdjustmentVersion:  enc: B24@0:8@16
+  Properties (5):
+    • string
+    • majorVersion
+    • minorVersion
+    • subMinorVersion
+    • platform
+
+Class: PIParallaxColorAnalysis  super: NSObject
+  Methods (19):
+    • setColors:  enc: v24@0:8@16
+    • luminance  enc: d16@0:8
+    • colors  enc: @16@0:8
+    • setLuminance:  enc: v24@0:8d16
+    • setVersion:  enc: v24@0:8q16
+    • .cxx_destruct  enc: v16@0:8
+    • version  enc: q16@0:8
+    • backgroundLuminance  enc: d16@0:8
+    • init  enc: @16@0:8
+    • backgroundColors  enc: @16@0:8
+    • setBackgroundColors:  enc: v24@0:8@16
+    • contentsDictionary  enc: @16@0:8
+    • clockAreaColors  enc: @16@0:8
+    • foregroundColors  enc: @16@0:8
+    • foregroundLuminance  enc: d16@0:8
+    • setBackgroundLuminance:  enc: v24@0:8d16
+    • setClockAreaColors:  enc: v24@0:8@16
+    • setForegroundColors:  enc: v24@0:8@16
+    • setForegroundLuminance:  enc: v24@0:8d16
+  Properties (8):
+    • version
+    • luminance
+    • foregroundLuminance
+    • backgroundLuminance
+    • colors
+    • foregroundColors
+    • backgroundColors
+    • clockAreaColors
+
+Class: PIParallaxInactiveStyleData  super: NSObject
+  Methods (9):
+    • imageSize  enc: {CGSize=dd}16@0:8
+    • description  enc: @16@0:8
+    • configuration  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • data  enc: @16@0:8
+    • init  enc: @16@0:8
+    • serializedDataWithError:  enc: @24@0:8o^@16
+    • tuningParameters  enc: @16@0:8
+    • initWithData:imageSize:configuration:tuningParameters:  enc: @56@0:8@16{CGSize=dd}24@40@48
+  Properties (4):
+    • imageSize
+    • configuration
+    • tuningParameters
+    • data
+
+Class: PIParallaxInactiveStyleEngine  super: NSObject
+  Methods (26):
+    • commandQueue  enc: @16@0:8
+    • device  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • _beginPartialApplyStyleWithIntensity:  enc: v20@0:8f16
+    • applyStyleToPixelBuffer:intensity:completion:  enc: v36@0:8^{__CVBuffer=}16f24@?28
+    • applyStyleToPixelBuffer:rect:intensity:completion:  enc: v68@0:8^{__CVBuffer=}16{CGRect={CGPoint=dd}{CGSize=dd}}24f56@?60
+    • applyStyleToTexture:intensity:completion:  enc: v36@0:8@16f24@?28
+    • applyStyleToTexture:rect:intensity:completion:  enc: v68@0:8@16{CGRect={CGPoint=dd}{CGSize=dd}}24f56@?60
+    • beginPartialApplyStyleWithPixelBuffer:intensity:error:  enc: B36@0:8^{__CVBuffer=}16f24o^@28
+    • beginPartialApplyStyleWithPixelBuffer:rect:intensity:error:  enc: B68@0:8^{__CVBuffer=}16{CGRect={CGPoint=dd}{CGSize=dd}}24f56o^@60
+    • beginPartialApplyStyleWithTexture:intensity:error:  enc: B36@0:8@16f24o^@28
+    • beginPartialApplyStyleWithTexture:rect:intensity:error:  enc: B68@0:8@16{CGRect={CGPoint=dd}{CGSize=dd}}24f56o^@60
+    • cachedTextureForPixelBuffer:error:  enc: @32@0:8^{__CVBuffer=}16o^@24
+    • endPartialApplyStyleWithCompletion:  enc: v24@0:8@?16
+    • generateStyleDataFromStyleBuffer:completion:  enc: v32@0:8@16@?24
+    • initWithMetalDevice:commandQueue:  enc: @32@0:8@16@24
+    • learnStyleFromPixelBuffer:rect:toPixelBuffer:rect:completion:  enc: v104@0:8^{__CVBuffer=}16{CGRect={CGPoint=dd}{CGSize=dd}}24^{__CVBuffer=}56{CGRect={CGPoint=dd}{CGSize=dd}}64@?96
+    • learnStyleFromPixelBuffer:toPixelBuffer:completion:  enc: v40@0:8^{__CVBuffer=}16^{__CVBuffer=}24@?32
+    • learnStyleFromTexture:rect:toTexture:rect:completion:  enc: v104@0:8@16{CGRect={CGPoint=dd}{CGSize=dd}}24@56{CGRect={CGPoint=dd}{CGSize=dd}}64@?96
+    • learnStyleFromTexture:toTexture:completion:  enc: v40@0:8@16@24@?32
+    • partialApplyStyleToPixelBuffer:at:error:  enc: B48@0:8^{__CVBuffer=}16{CGPoint=dd}24o^@40
+    • partialApplyStyleToPixelBuffer:at:subrect:error:  enc: B80@0:8^{__CVBuffer=}16{CGPoint=dd}24{CGRect={CGPoint=dd}{CGSize=dd}}40o^@72
+    • partialApplyStyleToTexture:at:error:  enc: B48@0:8@16{CGPoint=dd}24o^@40
+    • partialApplyStyleToTexture:at:subrect:error:  enc: B80@0:8@16{CGPoint=dd}24{CGRect={CGPoint=dd}{CGSize=dd}}40o^@72
+    • prepareForApplyingStyle:error:  enc: B32@0:8@16o^@24
+    • prepareForLearningWithImageSize:error:  enc: B40@0:8{CGSize=dd}16o^@32
+  Properties (2):
+    • device
+    • commandQueue
+
+Class: PIParallaxColorSuggester  super: NSObject
+  Methods (7):
+    • system  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • addRuleWithHueMin:hueMax:suggestion:  enc: v40@0:8d16d24@?32
+    • initWithColorAnalysis:  enc: @24@0:8@16
+    • suggestedColorForColor:  enc: @24@0:8@16
+    • suggestedColorsForColors:fromColorPalette:  enc: @32@0:8@16@24
+  Properties (1):
+    • system
+
+Class: PIParallaxSegmentationItem  super: NSObject
+  Methods (98):
+    • fileURL  enc: @16@0:8
+    • regions  enc: @16@0:8
+    • setFileURL:  enc: v24@0:8@16
+    • focalLengthIn35mm  enc: d16@0:8
+    • isComplete  enc: B16@0:8
+    • setDefaultLayout:  enc: v24@0:8@16
+    • setRegions:  enc: v24@0:8@16
+    • scores  enc: @16@0:8
+    • setResource:  enc: v24@0:8@16
+    • setClassification:  enc: v24@0:8Q16
+    • defaultLayout  enc: @16@0:8
+    • setScores:  enc: v24@0:8@16
+    • _invalidateCachedData  enc: v16@0:8
+    • classification  enc: Q16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • version  enc: Q16@0:8
+    • resource  enc: @16@0:8
+    • debugDescription  enc: @16@0:8
+    • composition  enc: @16@0:8
+    • init  enc: @16@0:8
+    • copyWithZone:  enc: @24@0:8^{_NSZone=}16
+    • loadFromURL:error:  enc: B32@0:8@16o^@24
+    • setContextInfo:  enc: v24@0:8@16
+    • defaultStyles  enc: @16@0:8
+    • contextInfo  enc: @16@0:8
+    • saveToURL:error:  enc: B32@0:8@16o^@24
+    • colorAnalysis  enc: @16@0:8
+    • setComposition:  enc: v24@0:8@16
+    • setFocalLengthIn35mm:  enc: v24@0:8d16
+    • loadingState  enc: Q16@0:8
+    • setLoadingState:  enc: v24@0:8Q16
+    • layoutConfiguration  enc: @16@0:8
+    • contentsDictionary  enc: @16@0:8
+    • isSettlingEffectAvailable  enc: B16@0:8
+    • isSpatialPhotoAvailable  enc: B16@0:8
+    • HDRGainMap  enc: @16@0:8
+    • availableStyles  enc: @16@0:8
+    • settlingEffectGatingDiagnostics  enc: @16@0:8
+    • _availableStyles  enc: @16@0:8
+    • _defaultStyles  enc: @16@0:8
+    • _loadSegmentationDataFromURL:error:matteImageLoadingBlock:backgroundImageLoadingBlock:settingEffectDataLoadingBlock:  enc: B56@0:8@16o^@24@?32@?40@?48
+    • _populateAvailableStyles  enc: v16@0:8
+    • _populateDefaultStyles  enc: v16@0:8
+    • adjustedStyleForHeadroom:  enc: @24@0:8@16
+    • availableStyleOfKind:  enc: @24@0:8@16
+    • defaultStyleOfKind:  enc: @24@0:8@16
+    • headroomLayout  enc: @16@0:8
+    • livePhotoResource  enc: @16@0:8
+    • loadContentsFromDictionary:hasMatte:hasBackground:error:  enc: B48@0:8@16^B24^B32o^@40
+    • loadSegmentationDataFromURL:error:  enc: B32@0:8@16o^@24
+    • localLightData  enc: @16@0:8
+    • originalLayout  enc: @16@0:8
+    • originalStyle  enc: @16@0:8
+    • resetSettlingEffectGatingFailure  enc: v16@0:8
+    • resetSpatialPhotoGatingFailure  enc: v16@0:8
+    • saveAssetResourceToURL:error:  enc: B32@0:8@16o^@24
+    • saveSegmentationDataToURL:error:  enc: B32@0:8@16o^@24
+    • segmentationBackground  enc: @16@0:8
+    • segmentationConfidenceMap  enc: @16@0:8
+    • segmentationDataURL  enc: @16@0:8
+    • segmentationMatte  enc: @16@0:8
+    • setColorAnalysis:  enc: v24@0:8@16
+    • setHDRGainMap:  enc: v24@0:8@16
+    • setHeadroomLayout:  enc: v24@0:8@16
+    • setLivePhotoResource:  enc: v24@0:8@16
+    • setLocalLightData:  enc: v24@0:8@16
+    • setOriginalLayout:  enc: v24@0:8@16
+    • setSegmentationBackground:  enc: v24@0:8@16
+    • setSegmentationConfidenceMap:  enc: v24@0:8@16
+    • setSegmentationDataURL:  enc: v24@0:8@16
+    • setSegmentationMatte:  enc: v24@0:8@16
+    • setSettlingEffectLayout:  enc: v24@0:8@16
+    • setSettlingEffectNormalizedBounds:  enc: v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16
+    • setSettlingEffectStatus:  enc: v24@0:8Q16
+    • setSettlingEffectVideoData:  enc: v24@0:8@16
+    • setSpatialPhotoLayout:  enc: v24@0:8@16
+    • setSpatialPhotoNormalizedBounds:  enc: v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16
+    • setSpatialPhotoStatus:  enc: v24@0:8Q16
+    • set_availableStyles:  enc: v24@0:8@16
+    • set_defaultStyles:  enc: v24@0:8@16
+    • settlingEffectFailedAnyGating  enc: B16@0:8
+    • settlingEffectFailedUnexpectedly  enc: B16@0:8
+    • settlingEffectHasInterestingMotion  enc: B16@0:8
+    • settlingEffectLayout  enc: @16@0:8
+    • settlingEffectNormalizedBounds  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • settlingEffectStatus  enc: Q16@0:8
+    • settlingEffectVideoData  enc: @16@0:8
+    • spatialPhotoFailedAnyGating  enc: B16@0:8
+    • spatialPhotoFailedUnexpectedly  enc: B16@0:8
+    • spatialPhotoGatingDiagnosticsOnlyFailures:  enc: @20@0:8B16
+    • spatialPhotoLayout  enc: @16@0:8
+    • spatialPhotoNormalizedBounds  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • spatialPhotoStatus  enc: Q16@0:8
+    • suggestedStyleForCategory:  enc: @24@0:8@16
+    • supportsBackgroundlessStyles  enc: B16@0:8
+    • supportsManualClockIntersectionTolerance  enc: B16@0:8
+    • supportsSegmentedStyles  enc: B16@0:8
+    • updateScores:  enc: v24@0:8@16
+  Properties (50):
+    • _availableStyles
+    • _defaultStyles
+    • fileURL
+    • segmentationDataURL
+    • contextInfo
+    • resource
+    • livePhotoResource
+    • composition
+    • classification
+    • segmentationMatte
+    • segmentationConfidenceMap
+    • segmentationBackground
+    • HDRGainMap
+    • regions
+    • defaultLayout
+    • originalLayout
+    • headroomLayout
+    • settlingEffectLayout
+    • spatialPhotoLayout
+    • scores
+    • colorAnalysis
+    • localLightData
+    • settlingEffectNormalizedBounds
+    • settlingEffectStatus
+    • settlingEffectVideoData
+    • spatialPhotoNormalizedBounds
+    • focalLengthIn35mm
+    • spatialPhotoStatus
+    • loadingState
+    • isComplete
+    • layoutConfiguration
+    • isSettlingEffectAvailable
+    • settlingEffectFailedAnyGating
+    • settlingEffectFailedUnexpectedly
+    • settlingEffectHasInterestingMotion
+    • settlingEffectGatingDiagnostics
+    • isSpatialPhotoAvailable
+    • spatialPhotoFailedAnyGating
+    • spatialPhotoFailedUnexpectedly
+    • availableStyles
+    • defaultStyles
+    • originalStyle
+    • supportsSegmentedStyles
+    • supportsBackgroundlessStyles
+    • version
+    • supportsManualClockIntersectionTolerance
+    • hash
+    • superclass
+    • description
+    • debugDescription
+
+Class: PIParallaxStyle  super: NSObject
+  Methods (29):
+    • parameters  enc: @16@0:8
+    • description  enc: @16@0:8
+    • filter  enc: @16@0:8
+    • hash  enc: Q16@0:8
+    • isEqual:  enc: B24@0:8@16
+    • kind  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • recipe  enc: @16@0:8
+    • init  enc: @16@0:8
+    • clockFont  enc: @16@0:8
+    • clockColor  enc: @16@0:8
+    • colorSuggestions  enc: @16@0:8
+    • hasTonalityMode  enc: B16@0:8
+    • hasHeadroomLook  enc: B16@0:8
+    • bakedStyle  enc: @16@0:8
+    • clockVibrancy  enc: d16@0:8
+    • colorSuggestionForCategory:  enc: @24@0:8@16
+    • configureForCategory:  enc: B24@0:8@16
+    • defaultDominantColorWithAnalysis:  enc: @24@0:8@16
+    • hasBackgroundParameter  enc: B16@0:8
+    • hasColorParameter  enc: B16@0:8
+    • inactiveFilter  enc: @16@0:8
+    • inactiveRecipeIdentifier  enc: @16@0:8
+    • initWithClockColor:colorSuggestions:  enc: @32@0:8@16@24
+    • initWithClockColor:vibrancy:colorSuggestions:  enc: @40@0:8@16d24@32
+    • isSegmented  enc: B16@0:8
+    • recipeIdentifier  enc: @16@0:8
+    • setClockColor:  enc: v24@0:8@16
+    • setColorSuggestions:  enc: v24@0:8@16
+  Properties (14):
+    • colorSuggestions
+    • recipeIdentifier
+    • inactiveRecipeIdentifier
+    • recipe
+    • clockColor
+    • parameters
+    • kind
+    • clockFont
+    • clockVibrancy
+    • isSegmented
+    • hasTonalityMode
+    • hasHeadroomLook
+    • hasColorParameter
+    • hasBackgroundParameter
+
+Class: PIParallaxRecipeStyle  super: PIParallaxStyle
+  Methods (11):
+    • parameters  enc: @16@0:8
+    • description  enc: @16@0:8
+    • filter  enc: @16@0:8
+    • isEqual:  enc: B24@0:8@16
+    • kind  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • recipe  enc: @16@0:8
+    • clockFont  enc: @16@0:8
+    • inactiveFilter  enc: @16@0:8
+    • initWithIdentifier:recipe:  enc: @32@0:8@16@24
+    • recipeIdentifier  enc: @16@0:8
+
+Class: PIParallaxGreenScreenGraphicStyle  super: PIParallaxStyle
+  Methods (10):
+    • parameters  enc: @16@0:8
+    • color  enc: @16@0:8
+    • kind  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • setColor:  enc: v24@0:8@16
+    • configureForCategory:  enc: B24@0:8@16
+    • defaultDominantColorWithAnalysis:  enc: @24@0:8@16
+    • hasColorParameter  enc: B16@0:8
+    • initWithColor:clockColor:colorSuggestions:  enc: @40@0:8@16@24@32
+    • recipeIdentifier  enc: @16@0:8
+  Properties (1):
+    • color
+
+Class: PIParallaxGreenScreenBlurStyle  super: PIParallaxStyle
+  Methods (10):
+    • parameters  enc: @16@0:8
+    • color  enc: @16@0:8
+    • kind  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • setColor:  enc: v24@0:8@16
+    • configureForCategory:  enc: B24@0:8@16
+    • defaultDominantColorWithAnalysis:  enc: @24@0:8@16
+    • hasColorParameter  enc: B16@0:8
+    • initWithColor:clockColor:colorSuggestions:  enc: @40@0:8@16@24@32
+    • recipeIdentifier  enc: @16@0:8
+  Properties (1):
+    • color
+
+Class: PIParallaxGreenScreenStyle  super: PIParallaxStyle
+  Methods (10):
+    • parameters  enc: @16@0:8
+    • color  enc: @16@0:8
+    • kind  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • setColor:  enc: v24@0:8@16
+    • configureForCategory:  enc: B24@0:8@16
+    • defaultDominantColorWithAnalysis:  enc: @24@0:8@16
+    • hasColorParameter  enc: B16@0:8
+    • initWithColor:clockColor:colorSuggestions:  enc: @40@0:8@16@24@32
+    • recipeIdentifier  enc: @16@0:8
+  Properties (1):
+    • color
+
+Class: PIParallaxGreenScreenMonoStyle  super: PIParallaxGreenScreenStyle
+  Methods (2):
+    • kind  enc: @16@0:8
+    • recipeIdentifier  enc: @16@0:8
+
+Class: PIParallaxColorWashDuotoneStyle  super: PIParallaxStyle
+  Methods (17):
+    • parameters  enc: @16@0:8
+    • color  enc: @16@0:8
+    • kind  enc: @16@0:8
+    • primaryColor  enc: @16@0:8
+    • secondaryColor  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • setColor:  enc: v24@0:8@16
+    • setPrimaryColor:  enc: v24@0:8@16
+    • setSecondaryColor:  enc: v24@0:8@16
+    • showsBackground  enc: B16@0:8
+    • setShowsBackground:  enc: v20@0:8B16
+    • configureForCategory:  enc: B24@0:8@16
+    • defaultDominantColorWithAnalysis:  enc: @24@0:8@16
+    • hasBackgroundParameter  enc: B16@0:8
+    • hasColorParameter  enc: B16@0:8
+    • initWithPrimaryColor:secondaryColor:background:clockColor:colorSuggestions:  enc: @52@0:8@16@24B32@36@44
+    • recipeIdentifier  enc: @16@0:8
+  Properties (4):
+    • primaryColor
+    • secondaryColor
+    • color
+    • showsBackground
+
+Class: PIParallaxColorWashSingleStyle  super: PIParallaxStyle
+  Methods (13):
+    • parameters  enc: @16@0:8
+    • color  enc: @16@0:8
+    • kind  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • setColor:  enc: v24@0:8@16
+    • showsBackground  enc: B16@0:8
+    • setShowsBackground:  enc: v20@0:8B16
+    • configureForCategory:  enc: B24@0:8@16
+    • defaultDominantColorWithAnalysis:  enc: @24@0:8@16
+    • hasBackgroundParameter  enc: B16@0:8
+    • hasColorParameter  enc: B16@0:8
+    • initWithColor:background:clockColor:suggestions:  enc: @44@0:8@16B24@28@36
+    • recipeIdentifier  enc: @16@0:8
+  Properties (2):
+    • color
+    • showsBackground
+
+Class: PIParallaxBlackWhiteMonoStyle  super: PIParallaxStyle
+  Methods (8):
+    • parameters  enc: @16@0:8
+    • kind  enc: @16@0:8
+    • hasHeadroomLook  enc: B16@0:8
+    • configureForCategory:  enc: B24@0:8@16
+    • defaultDominantColorWithAnalysis:  enc: @24@0:8@16
+    • headroomLook  enc: q16@0:8
+    • recipeIdentifier  enc: @16@0:8
+    • setHeadroomLook:  enc: v24@0:8q16
+  Properties (1):
+    • headroomLook
+
+Class: PIParallaxColorBGStandardStyle  super: PIParallaxStyle
+  Methods (13):
+    • parameters  enc: @16@0:8
+    • color  enc: @16@0:8
+    • kind  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • setColor:  enc: v24@0:8@16
+    • showsBackground  enc: B16@0:8
+    • setShowsBackground:  enc: v20@0:8B16
+    • configureForCategory:  enc: B24@0:8@16
+    • defaultDominantColorWithAnalysis:  enc: @24@0:8@16
+    • hasBackgroundParameter  enc: B16@0:8
+    • hasColorParameter  enc: B16@0:8
+    • initWithColor:background:clockColor:colorSuggestions:  enc: @44@0:8@16B24@28@36
+    • recipeIdentifier  enc: @16@0:8
+  Properties (2):
+    • color
+    • showsBackground
+
+Class: PIParallaxStudioStyle  super: PIParallaxStyle
+  Methods (7):
+    • parameters  enc: @16@0:8
+    • kind  enc: @16@0:8
+    • hasTonalityMode  enc: B16@0:8
+    • configureForCategory:  enc: B24@0:8@16
+    • recipeIdentifier  enc: @16@0:8
+    • setTonality:  enc: v24@0:8q16
+    • tonality  enc: q16@0:8
+  Properties (1):
+    • tonality
+
+Class: PIParallaxBlackWhiteStudioStyle  super: PIParallaxStudioStyle
+  Methods (4):
+    • kind  enc: @16@0:8
+    • configureForCategory:  enc: B24@0:8@16
+    • defaultDominantColorWithAnalysis:  enc: @24@0:8@16
+    • recipeIdentifier  enc: @16@0:8
+
+Class: PIParallaxOriginalStyle  super: PIParallaxStyle
+  Methods (8):
+    • parameters  enc: @16@0:8
+    • kind  enc: @16@0:8
+    • hasHeadroomLook  enc: B16@0:8
+    • configureForCategory:  enc: B24@0:8@16
+    • headroomLook  enc: q16@0:8
+    • initWithColorAnalysis:  enc: @24@0:8@16
+    • recipeIdentifier  enc: @16@0:8
+    • setHeadroomLook:  enc: v24@0:8q16
+  Properties (1):
+    • headroomLook
+
+Class: PIParallaxStyleUserURLProvider  super: NSObject
+  Methods (6):
+    • baseURL  enc: @16@0:8
+    • setBaseURL:  enc: v24@0:8@16
+    • initWithBaseURL:  enc: @24@0:8@16
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • urlForIdentifier:  enc: @24@0:8@16
+  Properties (1):
+    • baseURL
+
+Class: PIParallaxStyleBundleURLProvider  super: NSObject
+  Methods (3):
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • urlForIdentifier:  enc: @24@0:8@16
+
+Class: PIParallaxStyleRecipeRegistry  super: NSObject
+
+Class: PIPortraitVideoDebugDetectionsRenderNode  super: NURenderNode
+  Methods (13):
+    • .cxx_destruct  enc: v16@0:8
+    • renderTime  enc: {?=qiIq}16@0:8
+    • setRenderTime:  enc: v40@0:8{?=qiIq}16
+    • _evaluateImage:  enc: @24@0:8o^@16
+    • requiresVideoComposition  enc: B16@0:8
+    • resolvedNodeWithCachedInputs:settings:pipelineState:error:  enc: @48@0:8@16@24@32o^@40
+    • shouldCacheNodeForPipelineState:  enc: B24@0:8@16
+    • labelImageCache  enc: @16@0:8
+    • _imageByAddingDetection:toImage:isPrimary:canvasSize:inverseOrientation:  enc: @60@0:8@16@24B32{CGSize=dd}36q52
+    • cinematographyScript  enc: @16@0:8
+    • initWithInput:assetURL:cinematographyState:monochrome:  enc: @44@0:8@16@24@32B40
+    • setCinematographyScript:  enc: v24@0:8@16
+    • setLabelImageCache:  enc: v24@0:8@16
+  Properties (3):
+    • cinematographyScript
+    • renderTime
+    • labelImageCache
+
+Class: PIPortraitNode  super: NURenderNode
+  Methods (6):
+    • input  enc: @16@0:8
+    • uniqueInputNode  enc: @16@0:8
+    • _evaluateImageProperties:  enc: @24@0:8o^@16
+    • canPropagateOriginalAuxiliaryData:  enc: B24@0:8q16
+    • blurMap  enc: @16@0:8
+    • shouldDisableGainMap  enc: B16@0:8
+  Properties (2):
+    • input
+    • blurMap
+
+Class: PIPhotoEffect3DNode  super: PIPortraitNode
+  Methods (4):
+    • initWithSettings:inputs:  enc: @32@0:8@16@24
+    • nodeByReplayingAgainstCache:pipelineState:error:  enc: @40@0:8@16@24o^@32
+    • requiresVideoComposition  enc: B16@0:8
+    • initWithInput:blurMap:settings:  enc: @40@0:8@16@24@32
+
+Class: PIPortraitEffectNode  super: PIPortraitNode
+  Methods (8):
+    • canPropagateOriginalAuxiliaryData:  enc: B24@0:8q16
+    • initWithSettings:inputs:  enc: @32@0:8@16@24
+    • nodeByReplayingAgainstCache:pipelineState:error:  enc: @40@0:8@16@24o^@32
+    • initWithInput:blurMap:settings:  enc: @40@0:8@16@24@32
+    • isPortraitStage  enc: B16@0:8
+    • portraitVersion  enc: q16@0:8
+    • isPortraitMono  enc: B16@0:8
+    • shouldDisableGainMap  enc: B16@0:8
+
+Class: PIPortraitMakeBlurMapNode  super: PIPortraitNode
+  Methods (3):
+    • initWithInput:settings:  enc: @32@0:8@16@24
+    • initWithSettings:inputs:  enc: @32@0:8@16@24
+    • nodeByReplayingAgainstCache:pipelineState:error:  enc: @40@0:8@16@24o^@32
+
+Class: PIPortraitVideoRenderNode  super: NURenderNode
+  Methods (20):
+    • debugMode  enc: q16@0:8
+    • renderQuality  enc: i16@0:8
+    • timedMetadata  enc: @16@0:8
+    • globalMetadata  enc: @16@0:8
+    • renderTime  enc: {?=qiIq}16@0:8
+    • uniqueInputNode  enc: @16@0:8
+    • _evaluateImage:  enc: @24@0:8o^@16
+    • nodeByReplayingAgainstCache:pipelineState:error:  enc: @40@0:8@16@24o^@32
+    • requiresVideoComposition  enc: B16@0:8
+    • resolvedNodeWithCachedInputs:settings:pipelineState:error:  enc: @48@0:8@16@24@32o^@40
+    • shouldCacheNodeForPipelineState:  enc: B24@0:8@16
+    • _portraitQualityForRenderScale:  enc: i32@0:8{?=qq}16
+    • _prewarmPortraitRendererWithPipelineState:error:  enc: B32@0:8@16o^@24
+    • _sourceBufferFromInput:error:  enc: ^{__CVBuffer=}32@0:8@16o^@24
+    • _targetScaleForScale:  enc: {?=qq}32@0:8{?=qq}16
+    • apertureKeyframes  enc: @16@0:8
+    • disparityKeyframes  enc: @16@0:8
+    • initWithInput:disparityInput:disparityKeyframes:apertureKeyframes:debugMode:  enc: @56@0:8@16@24@32@40q48
+    • sourceTransferFunction  enc: @16@0:8
+    • useSourceBuffersDirectly  enc: B16@0:8
+  Properties (7):
+    • disparityKeyframes
+    • apertureKeyframes
+    • renderTime
+    • renderQuality
+    • debugMode
+    • globalMetadata
+    • timedMetadata
+
+Class: PIParallaxColorPalette  super: NSObject
+  Methods (13):
+    • initWithColors:  enc: @24@0:8@16
+    • .cxx_destruct  enc: v16@0:8
+    • primaryColors  enc: @16@0:8
+    • secondaryColors  enc: @16@0:8
+    • _lookupColor:withPredicate:  enc: Q32@0:8@16@?24
+    • indexOfColor:  enc: Q24@0:8@16
+    • initWithPrimaryColors:secondaryColors:  enc: @32@0:8@16@24
+    • initWithPrimaryColors:secondaryColors:suggestionIndices:  enc: @40@0:8@16@24@32
+    • paletteColorForColor:  enc: @24@0:8@16
+    • suggestionAtIndex:  enc: @24@0:8Q16
+    • suggestionForColor:  enc: @24@0:8@16
+    • suggestionIndices  enc: @16@0:8
+    • writeToURL:mode:space:error:  enc: B48@0:8@16@24@32o^@40
+  Properties (3):
+    • primaryColors
+    • secondaryColors
+    • suggestionIndices
+
+Class: PIParallaxInwardFillKernel  super: NUComputeKernel
+  Methods (4):
+    • sourceTexture  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • encodeToCommandBuffer:destinationTexture:  enc: v32@0:8@16@24
+    • setSourceTexture:  enc: v24@0:8@16
+  Properties (1):
+    • sourceTexture
+
+Class: PIPortraitAdjustmentController  super: PIAdjustmentController
+  Methods (15):
+    • setVersion:  enc: v24@0:8q16
+    • kind  enc: @16@0:8
+    • setKind:  enc: v24@0:8@16
+    • version  enc: q16@0:8
+    • setStrength:  enc: v24@0:8d16
+    • strength  enc: d16@0:8
+    • initWithAdjustment:  enc: @24@0:8@16
+    • portraitInfo  enc: @16@0:8
+    • setPortraitInfo:  enc: v24@0:8@16
+    • setSpillMatteAllowed:  enc: v24@0:8@16
+    • defaultStrength  enc: d16@0:8
+    • canRenderPortraitEffect  enc: B16@0:8
+    • isSettingEqual:forKey:  enc: B32@0:8@16@24
+    • pasteKeysForMediaType:  enc: @24@0:8q16
+    • spillMatteAllowed  enc: @16@0:8
+  Properties (6):
+    • portraitInfo
+    • kind
+    • version
+    • strength
+    • defaultStrength
+    • spillMatteAllowed
+
+Class: PIPortraitVideoAdjustmentController  super: PIAdjustmentController
+  Methods (15):
+    • setDebugMode:  enc: v24@0:8q16
+    • aperture  enc: @16@0:8
+    • debugMode  enc: q16@0:8
+    • setAperture:  enc: v24@0:8@16
+    • setRenderingVersionAtCapture:  enc: v24@0:8Q16
+    • visualInputKeys  enc: @16@0:8
+    • _keyframesForKey:class:  enc: @32@0:8@16#24
+    • _setKeyframes:forKey:  enc: v32@0:8@16@24
+    • cinematographyState  enc: @16@0:8
+    • disparityKeyframes  enc: @16@0:8
+    • pasteKeysForMediaType:  enc: @24@0:8q16
+    • renderingVersionAtCapture  enc: Q16@0:8
+    • setCinematographyState:  enc: v24@0:8@16
+    • setDisparityKeyframes:  enc: v24@0:8@16
+    • trimToTimeRange:usingScript:  enc: v72@0:8{?={?=qiIq}{?=qiIq}}16@64
+  Properties (5):
+    • disparityKeyframes
+    • aperture
+    • cinematographyState
+    • debugMode
+    • renderingVersionAtCapture
+
+Class: PIPosterInactiveFrameLayoutRequest  super: NURenderRequest
+  Methods (10):
+    • setLayout:  enc: v24@0:8@16
+    • layout  enc: @16@0:8
+    • submit:  enc: v24@0:8@?16
+    • .cxx_destruct  enc: v16@0:8
+    • copyWithZone:  enc: @24@0:8^{_NSZone=}16
+    • initWithComposition:  enc: @24@0:8@16
+    • mediaComponentType  enc: q16@0:8
+    • newRenderJob  enc: @16@0:8
+    • initWithSegmentationItem:  enc: @24@0:8@16
+    • segmentationItem  enc: @16@0:8
+  Properties (2):
+    • segmentationItem
+    • layout
+
+Class: PIParallaxLayerStackRequest  super: NURenderRequest
+  Methods (36):
+    • setLayout:  enc: v24@0:8@16
+    • time  enc: {?=qiIq}16@0:8
+    • setCache:  enc: v24@0:8@16
+    • setStyle:  enc: v24@0:8@16
+    • layout  enc: @16@0:8
+    • cache  enc: @16@0:8
+    • submit:  enc: v24@0:8@?16
+    • .cxx_destruct  enc: v16@0:8
+    • style  enc: @16@0:8
+    • copyWithZone:  enc: @24@0:8^{_NSZone=}16
+    • initWithComposition:  enc: @24@0:8@16
+    • mediaComponentType  enc: q16@0:8
+    • newRenderJob  enc: @16@0:8
+    • allowedLayoutStrategies  enc: Q16@0:8
+    • isSettlingEffectEnabled  enc: B16@0:8
+    • isSpatialPhotoEnabled  enc: B16@0:8
+    • setAllowedLayoutStrategies:  enc: v24@0:8Q16
+    • setUserAdjustedVisibleFrame:  enc: v20@0:8B16
+    • userAdjustedVisibleFrame  enc: B16@0:8
+    • auxiliaryLayout  enc: @16@0:8
+    • setSpatialPhotoProgressHandler:  enc: v24@0:8@?16
+    • headroomBlurEnabled  enc: B16@0:8
+    • initWithSegmentationItem:  enc: @24@0:8@16
+    • isForegroundLayerEnabled  enc: B16@0:8
+    • layerStackMode  enc: q16@0:8
+    • segmentationItem  enc: @16@0:8
+    • setAuxiliaryLayout:  enc: v24@0:8@16
+    • setForegroundLayerEnabled:  enc: v20@0:8B16
+    • setHeadroomBlurEnabled:  enc: v20@0:8B16
+    • setLayerStackMode:  enc: v24@0:8q16
+    • setSettlingEffectEnabled:  enc: v20@0:8B16
+    • setSpatialPhotoEnabled:  enc: v20@0:8B16
+    • setUseLegacyHeadroom:  enc: v20@0:8B16
+    • shouldUseVideoFrame  enc: B16@0:8
+    • spatialPhotoProgressHandler  enc: @?16@0:8
+    • useLegacyHeadroom  enc: B16@0:8
+  Properties (15):
+    • shouldUseVideoFrame
+    • segmentationItem
+    • style
+    • layout
+    • auxiliaryLayout
+    • layerStackMode
+    • headroomBlurEnabled
+    • allowedLayoutStrategies
+    • useLegacyHeadroom
+    • cache
+    • settlingEffectEnabled
+    • spatialPhotoEnabled
+    • userAdjustedVisibleFrame
+    • spatialPhotoProgressHandler
+    • foregroundLayerEnabled
+
+Class: PIParallaxSpatialAnalysisRequest  super: NURenderRequest
+  Methods (16):
+    • setLayout:  enc: v24@0:8@16
+    • isInteractive  enc: B16@0:8
+    • setLayoutOrientation:  enc: v24@0:8q16
+    • layout  enc: @16@0:8
+    • submit:  enc: v24@0:8@?16
+    • layoutOrientation  enc: q16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • copyWithZone:  enc: @24@0:8^{_NSZone=}16
+    • mediaComponentType  enc: q16@0:8
+    • newRenderJob  enc: @16@0:8
+    • sceneAnalyzer  enc: @16@0:8
+    • setIsInteractive:  enc: v20@0:8B16
+    • setSceneAnalyzer:  enc: v24@0:8@16
+    • setSpatialPhotoLayer:  enc: v24@0:8@16
+    • spatialPhotoLayer  enc: @16@0:8
+  Properties (5):
+    • sceneAnalyzer
+    • layout
+    • layoutOrientation
+    • isInteractive
+    • spatialPhotoLayer
+
+Class: PIParallaxInactiveStyleLearnRequest  super: NURenderRequest
+  Methods (14):
+    • submit:  enc: v24@0:8@?16
+    • sourceFrame  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • setSourceFrame:  enc: v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16
+    • .cxx_destruct  enc: v16@0:8
+    • copyWithZone:  enc: @24@0:8^{_NSZone=}16
+    • setTargetFrame:  enc: v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16
+    • targetFrame  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • mediaComponentType  enc: q16@0:8
+    • newRenderJob  enc: @16@0:8
+    • fromBuffer  enc: @16@0:8
+    • initWithFromPixelBuffer:frame:toPixelBuffer:frame:  enc: @96@0:8@16{CGRect={CGPoint=dd}{CGSize=dd}}24@56{CGRect={CGPoint=dd}{CGSize=dd}}64
+    • setFromBuffer:  enc: v24@0:8@16
+    • setToBuffer:  enc: v24@0:8@16
+    • toBuffer  enc: @16@0:8
+  Properties (4):
+    • fromBuffer
+    • toBuffer
+    • sourceFrame
+    • targetFrame
+
+Class: PIPosterLayoutRequest  super: NURenderRequest
+  Methods (38):
+    • _commonInit  enc: v16@0:8
+    • submit:  enc: v24@0:8@?16
+    • .cxx_destruct  enc: v16@0:8
+    • role  enc: Q16@0:8
+    • setRole:  enc: v24@0:8Q16
+    • copyWithZone:  enc: @24@0:8^{_NSZone=}16
+    • mediaComponentType  enc: q16@0:8
+    • newRenderJob  enc: @16@0:8
+    • layoutConfiguration  enc: @16@0:8
+    • setLayoutConfiguration:  enc: v24@0:8@16
+    • allowedClockStretch  enc: @16@0:8
+    • allowedLayoutStrategies  enc: Q16@0:8
+    • setAllowedClockStretch:  enc: v24@0:8@16
+    • setAllowedLayoutStrategies:  enc: v24@0:8Q16
+    • spatialPadding  enc: d16@0:8
+    • hasSettlingEffect  enc: B16@0:8
+    • layoutProvider  enc: @16@0:8
+    • layoutRegions  enc: @16@0:8
+    • normalizedLayoutBounds  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • segmentationClassification  enc: Q16@0:8
+    • segmentationConfidenceMap  enc: @16@0:8
+    • segmentationMatte  enc: @16@0:8
+    • setHasSettlingEffect:  enc: v20@0:8B16
+    • setLayoutProvider:  enc: v24@0:8@16
+    • setLayoutRegions:  enc: v24@0:8@16
+    • setNormalizedLayoutBounds:  enc: v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16
+    • setSegmentationClassification:  enc: v24@0:8Q16
+    • setSegmentationConfidenceMap:  enc: v24@0:8@16
+    • setSegmentationMatte:  enc: v24@0:8@16
+    • setShouldComputeAllScores:  enc: v20@0:8B16
+    • setShouldComputeSpatialLayout:  enc: v20@0:8B16
+    • setShouldConsiderHeadroom:  enc: v20@0:8B16
+    • setShouldConstrainLayoutToBounds:  enc: v20@0:8B16
+    • setSpatialPadding:  enc: v24@0:8d16
+    • shouldComputeAllScores  enc: B16@0:8
+    • shouldComputeSpatialLayout  enc: B16@0:8
+    • shouldConsiderHeadroom  enc: B16@0:8
+    • shouldConstrainLayoutToBounds  enc: B16@0:8
+  Properties (16):
+    • layoutConfiguration
+    • layoutRegions
+    • shouldConstrainLayoutToBounds
+    • hasSettlingEffect
+    • normalizedLayoutBounds
+    • segmentationMatte
+    • segmentationConfidenceMap
+    • segmentationClassification
+    • shouldComputeAllScores
+    • shouldConsiderHeadroom
+    • shouldComputeSpatialLayout
+    • spatialPadding
+    • allowedLayoutStrategies
+    • allowedClockStretch
+    • layoutProvider
+    • role
+
+Class: PIParallaxCompoundLayerStackRequest  super: NURenderRequest
+  Methods (54):
+    • setLayout:  enc: v24@0:8@16
+    • setStyle:  enc: v24@0:8@16
+    • layout  enc: @16@0:8
+    • submit:  enc: v24@0:8@?16
+    • .cxx_destruct  enc: v16@0:8
+    • cancel  enc: v16@0:8
+    • style  enc: @16@0:8
+    • copyWithZone:  enc: @24@0:8^{_NSZone=}16
+    • initWithComposition:  enc: @24@0:8@16
+    • mediaComponentType  enc: q16@0:8
+    • newRenderJob  enc: @16@0:8
+    • allowedLayoutStrategies  enc: Q16@0:8
+    • isSettlingEffectEnabled  enc: B16@0:8
+    • isSpatialPhotoEnabled  enc: B16@0:8
+    • setAllowedLayoutStrategies:  enc: v24@0:8Q16
+    • setUserAdjustedVisibleFrame:  enc: v20@0:8B16
+    • userAdjustedVisibleFrame  enc: B16@0:8
+    • effectiveLayout  enc: @16@0:8
+    • _calculateLayoutPropertiesWithOrientedLayout:isAuxiliary:completion:  enc: v36@0:8@16B24@?28
+    • _chooseLayoutForOrientation:completion:  enc: v32@0:8q16@?24
+    • _generateLayerStackForOrientation:completion:  enc: v32@0:8q16@?24
+    • _recordError:  enc: v24@0:8@16
+    • _recordResult:  enc: v24@0:8@16
+    • _responseWithCompoundLayerStack:  enc: @24@0:8@16
+    • _submit:  enc: v24@0:8@?16
+    • _submitClockMaterialRequestWithLayerStack:completion:  enc: v32@0:8@16@?24
+    • _submitClockOverlapRequestWithLayout:completion:  enc: v32@0:8@16@?24
+    • _submitInactiveLayoutRequestWithOrientedLayout:completion:  enc: v32@0:8@16@?24
+    • _submitLayerStackRequestForMode:layout:auxiliaryLayout:completion:  enc: v48@0:8q16@24@32@?40
+    • _submitLayerStackRequestForMode:layout:completion:  enc: v40@0:8q16@24@?32
+    • _submitLayerStackRequestsWithLayout:auxiliaryLayout:orientation:completion:  enc: v48@0:8@16@24q32@?40
+    • _submitSpatialPhotoInactiveDataRequestWithLayerStack:completion:  enc: v32@0:8@16@?24
+    • fullPhotoLuminanceCalculationEnabled  enc: B16@0:8
+    • ignoreOriginalLayout  enc: B16@0:8
+    • initWithSegmentationItem:  enc: @24@0:8@16
+    • isForegroundLayerEnabled  enc: B16@0:8
+    • layerStackOptions  enc: Q16@0:8
+    • segmentationItem  enc: @16@0:8
+    • setForegroundLayerEnabled:  enc: v20@0:8B16
+    • setFullPhotoLuminanceCalculationEnabled:  enc: v20@0:8B16
+    • setIgnoreOriginalLayout:  enc: v20@0:8B16
+    • setLayerStackOptions:  enc: v24@0:8Q16
+    • setSettlingEffectEnabled:  enc: v20@0:8B16
+    • setShouldRecalculateLayoutProperties:  enc: v20@0:8B16
+    • setSpatialPhotoEnabled:  enc: v20@0:8B16
+    • setUpdateClockAreaLuminance:  enc: v20@0:8B16
+    • setUpdateClockZPosition:  enc: v20@0:8B16
+    • setUpdateInactiveFrame:  enc: v20@0:8B16
+    • setUseLegacyHeadroom:  enc: v20@0:8B16
+    • shouldRecalculateLayoutProperties  enc: B16@0:8
+    • updateClockAreaLuminance  enc: B16@0:8
+    • updateClockZPosition  enc: B16@0:8
+    • updateInactiveFrame  enc: B16@0:8
+    • useLegacyHeadroom  enc: B16@0:8
+  Properties (16):
+    • segmentationItem
+    • style
+    • layout
+    • ignoreOriginalLayout
+    • layerStackOptions
+    • settlingEffectEnabled
+    • spatialPhotoEnabled
+    • userAdjustedVisibleFrame
+    • fullPhotoLuminanceCalculationEnabled
+    • foregroundLayerEnabled
+    • allowedLayoutStrategies
+    • shouldRecalculateLayoutProperties
+    • useLegacyHeadroom
+    • updateInactiveFrame
+    • updateClockZPosition
+    • updateClockAreaLuminance
+
+Class: PIParallaxColorAnalysisRequest  super: NURenderRequest
+  Methods (20):
+    • _commonInit  enc: v16@0:8
+    • submit:  enc: v24@0:8@?16
+    • .cxx_destruct  enc: v16@0:8
+    • copyWithZone:  enc: @24@0:8^{_NSZone=}16
+    • mediaComponentType  enc: q16@0:8
+    • newRenderJob  enc: @16@0:8
+    • chromaThreshold  enc: d16@0:8
+    • analyzeHeadroom  enc: B16@0:8
+    • analyzeBackground  enc: B16@0:8
+    • dominanceThreshold  enc: d16@0:8
+    • maxDominantColors  enc: q16@0:8
+    • normalizedClipRect  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • segmentationMatte  enc: @16@0:8
+    • setAnalyzeBackground:  enc: v20@0:8B16
+    • setAnalyzeHeadroom:  enc: v20@0:8B16
+    • setChromaThreshold:  enc: v24@0:8d16
+    • setDominanceThreshold:  enc: v24@0:8d16
+    • setMaxDominantColors:  enc: v24@0:8q16
+    • setNormalizedClipRect:  enc: v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16
+    • setSegmentationMatte:  enc: v24@0:8@16
+  Properties (7):
+    • segmentationMatte
+    • analyzeBackground
+    • normalizedClipRect
+    • maxDominantColors
+    • dominanceThreshold
+    • chromaThreshold
+    • analyzeHeadroom
+
+Class: PIParallaxClockMaterialRequest  super: NURenderRequest
+  Methods (13):
+    • setStyle:  enc: v24@0:8@16
+    • submit:  enc: v24@0:8@?16
+    • .cxx_destruct  enc: v16@0:8
+    • style  enc: @16@0:8
+    • copyWithZone:  enc: @24@0:8^{_NSZone=}16
+    • initWithComposition:  enc: @24@0:8@16
+    • layerStack  enc: @16@0:8
+    • setLayerStack:  enc: v24@0:8@16
+    • mediaComponentType  enc: q16@0:8
+    • newRenderJob  enc: @16@0:8
+    • initWithLayerStack:  enc: @24@0:8@16
+    • luminanceCalculationType  enc: q16@0:8
+    • setLuminanceCalculationType:  enc: v24@0:8q16
+  Properties (3):
+    • layerStack
+    • style
+    • luminanceCalculationType
+
+Class: PIPortraitAutoCalculator  super: NUAutoCalculator
+  Methods (5):
+    • submit:  enc: v24@0:8@?16
+    • .cxx_destruct  enc: v16@0:8
+    • _calculateWithImageProperties:valuesAtCapture:completion:  enc: v40@0:8@16@24@?32
+    • faceObservationCache  enc: @16@0:8
+    • setFaceObservationCache:  enc: v24@0:8@16
+  Properties (5):
+    • faceObservationCache
+    • hash
+    • superclass
+    • description
+    • debugDescription
+
+Class: PIPerspectiveAutoCalculator  super: NUAutoCalculator
+  Methods (57):
+    • initWithRequest:  enc: @24@0:8@16
+    • submit:  enc: v24@0:8@?16
+    • setMinimumConfidence:  enc: v24@0:8d16
+    • minimumConfidence  enc: d16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • initWithComposition:  enc: @24@0:8@16
+    • initWithMedia:  enc: @24@0:8@16
+    • hasFrontFacingCameraDimentions:  enc: B32@0:8{?=qq}16
+    • setMaxFaceSize:  enc: v24@0:8d16
+    • submitVerified:  enc: v24@0:8@?16
+    • addMethodDiagnostics:details:  enc: v32@0:8@16@24
+    • addMethodResultToDiagnostics:error:setYawPitchError:  enc: v36@0:8@16@24B32
+    • angleSeedDegreesCCW  enc: d16@0:8
+    • canGenerateNewCropRect:  enc: B24@0:8o^@16
+    • debugDiagnostics  enc: @16@0:8
+    • debugFilesEnabled  enc: B16@0:8
+    • debugFilesPrefix  enc: @16@0:8
+    • debugLineDetectionImage  enc: @16@0:8
+    • disableOnFrontFacingCameraImages  enc: B16@0:8
+    • disableOnPanos  enc: B16@0:8
+    • faceObservationCache  enc: @16@0:8
+    • getSizeOfAllFaces:  enc: f24@0:8@16
+    • isFrontFacingCameraImage:pixelSize:  enc: B40@0:8@16{?=qq}24
+    • maxAutoAngle  enc: @16@0:8
+    • maxAutoPitch  enc: @16@0:8
+    • maxAutoYaw  enc: @16@0:8
+    • maxFaceSize  enc: d16@0:8
+    • minimumAngleCorrection  enc: d16@0:8
+    • minimumPitchCorrection  enc: d16@0:8
+    • minimumPitchCorrectionArea  enc: d16@0:8
+    • minimumYawCorrection  enc: d16@0:8
+    • minimumYawCorrectionArea  enc: d16@0:8
+    • passesBuildingCheck:  enc: B24@0:8o^@16
+    • passesConfidenceCheck:error:  enc: B32@0:8@16o^@24
+    • passesFaceCheck:  enc: B24@0:8o^@16
+    • passesImagePropertiesCheck:  enc: B24@0:8o^@16
+    • passesMinimumCorrectionCheck:error:  enc: B32@0:8@16o^@24
+    • primaryImageProperties:  enc: @24@0:8o^@16
+    • setAngleSeedDegreesCCW:  enc: v24@0:8d16
+    • setDebugFilesEnabled:  enc: v20@0:8B16
+    • setDebugFilesPrefix:  enc: v24@0:8@16
+    • setDebugLineDetectionImage:  enc: v24@0:8@16
+    • setDisableOnFrontFacingCameraImages:  enc: v20@0:8B16
+    • setDisableOnPanos:  enc: v20@0:8B16
+    • setFaceObservationCache:  enc: v24@0:8@16
+    • setMaxAutoAngle:  enc: v24@0:8@16
+    • setMaxAutoPitch:  enc: v24@0:8@16
+    • setMaxAutoYaw:  enc: v24@0:8@16
+    • setMinimumAngleCorrection:  enc: v24@0:8d16
+    • setMinimumPitchCorrection:  enc: v24@0:8d16
+    • setMinimumPitchCorrectionArea:  enc: v24@0:8d16
+    • setMinimumYawCorrection:  enc: v24@0:8d16
+    • setMinimumYawCorrectionArea:  enc: v24@0:8d16
+    • setShouldRunBuildingCheck:  enc: v20@0:8B16
+    • shouldRunBuildingCheck  enc: B16@0:8
+    • wrapAsUnexpectedError:  enc: @24@0:8@16
+    • writeDebugDiagnosticsToDisk  enc: v16@0:8
+  Properties (24):
+    • debugLineDetectionImage
+    • debugDiagnostics
+    • maxAutoYaw
+    • maxAutoPitch
+    • maxAutoAngle
+    • minimumPitchCorrection
+    • minimumYawCorrection
+    • minimumAngleCorrection
+    • minimumConfidence
+    • maxFaceSize
+    • minimumPitchCorrectionArea
+    • minimumYawCorrectionArea
+    • disableOnPanos
+    • disableOnFrontFacingCameraImages
+    • shouldRunBuildingCheck
+    • angleSeedDegreesCCW
+    • debugFilesEnabled
+    • debugFilesPrefix
+    • time
+    • hash
+    • superclass
+    • description
+    • debugDescription
+    • faceObservationCache
+
+Class: PIParallaxClockLayoutRequest  super: NURenderRequest
+  Methods (10):
+    • setLayout:  enc: v24@0:8@16
+    • layout  enc: @16@0:8
+    • submit:  enc: v24@0:8@?16
+    • .cxx_destruct  enc: v16@0:8
+    • copyWithZone:  enc: @24@0:8^{_NSZone=}16
+    • initWithComposition:  enc: @24@0:8@16
+    • mediaComponentType  enc: q16@0:8
+    • newRenderJob  enc: @16@0:8
+    • initWithSegmentationItem:  enc: @24@0:8@16
+    • segmentationItem  enc: @16@0:8
+  Properties (2):
+    • segmentationItem
+    • layout
+
+Class: PIParallaxInfillRequest  super: NURenderRequest
+  Methods (16):
+    • setColorSpace:  enc: v24@0:8@16
+    • _commonInit  enc: v16@0:8
+    • colorSpace  enc: @16@0:8
+    • submit:  enc: v24@0:8@?16
+    • setPixelFormat:  enc: v24@0:8@16
+    • pixelFormat  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • copyWithZone:  enc: @24@0:8^{_NSZone=}16
+    • setScalePolicy:  enc: v24@0:8@16
+    • mediaComponentType  enc: q16@0:8
+    • newRenderJob  enc: @16@0:8
+    • scalePolicy  enc: @16@0:8
+    • segmentationMatte  enc: @16@0:8
+    • setSegmentationMatte:  enc: v24@0:8@16
+    • setShouldInfillForeground:  enc: v20@0:8B16
+    • shouldInfillForeground  enc: B16@0:8
+  Properties (5):
+    • segmentationMatte
+    • scalePolicy
+    • pixelFormat
+    • colorSpace
+    • shouldInfillForeground
+
+Class: PIPosterLayoutPropertiesRequest  super: NURenderRequest
+  Methods (11):
+    • setLayout:  enc: v24@0:8@16
+    • layout  enc: @16@0:8
+    • submit:  enc: v24@0:8@?16
+    • .cxx_destruct  enc: v16@0:8
+    • copyWithZone:  enc: @24@0:8^{_NSZone=}16
+    • mediaComponentType  enc: q16@0:8
+    • newRenderJob  enc: @16@0:8
+    • calculateAdaptiveFrame  enc: B16@0:8
+    • initWithSegmentationItem:  enc: @24@0:8@16
+    • segmentationItem  enc: @16@0:8
+    • setCalculateAdaptiveFrame:  enc: v20@0:8B16
+  Properties (3):
+    • segmentationItem
+    • layout
+    • calculateAdaptiveFrame
+
+Class: PIParallaxInfillJob  super: NURenderJob
+  Methods (15):
+    • cleanUp  enc: v16@0:8
+    • initWithRequest:  enc: @24@0:8@16
+    • result  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • complete:  enc: B24@0:8o^@16
+    • render:  enc: B24@0:8o^@16
+    • prepare:  enc: B24@0:8o^@16
+    • scalePolicy  enc: @16@0:8
+    • wantsOutputGeometry  enc: B16@0:8
+    • wantsOutputImage  enc: B16@0:8
+    • wantsRenderStage  enc: B16@0:8
+    • infillRequest  enc: @16@0:8
+    • initWithParallaxInfillRequest:  enc: @24@0:8@16
+    • matteImage  enc: @16@0:8
+    • setMatteImage:  enc: v24@0:8@16
+  Properties (2):
+    • infillRequest
+    • matteImage
+
+Class: PIPortraitVideoProcessor  super: CIImageProcessorKernel
+
+Class: PIPPrerollAttributes  super: NSObject
+  Methods (15):
+    • contentType  enc: q16@0:8
+    • encodeWithCoder:  enc: v24@0:8@16
+    • copy  enc: @16@0:8
+    • description  enc: @16@0:8
+    • hash  enc: q16@0:8
+    • isEqual:  enc: B24@0:8@16
+    • .cxx_destruct  enc: v16@0:8
+    • initWithCoder:  enc: @24@0:8@16
+    • debugDescription  enc: @16@0:8
+    • init  enc: @16@0:8
+    • copyWithZone:  enc: @24@0:8^v16
+    • prerollAttributesForAdContentWithRequiredLinearPlaybackEndTime:preferredTintColor:  enc: @32@0:8d16@24
+    • preferredTintColor  enc: @16@0:8
+    • prerollAttributesForSponsoredContentWithRequiredLinearPlaybackEndTime:preferredTintColor:  enc: @32@0:8d16@24
+    • requiredLinearPlaybackEndTime  enc: d16@0:8
+  Properties (6):
+    • hash
+    • description
+    • debugDescription
+    • contentType
+    • requiredLinearPlaybackEndTime
+    • preferredTintColor
+
+Class: PIPPlaybackState  super: NSObject
+  Methods (20):
+    • contentType  enc: q16@0:8
+    • contentDuration  enc: d16@0:8
+    • elapsedTime  enc: d16@0:8
+    • encodeWithCoder:  enc: v24@0:8@16
+    • timeControlStatus  enc: q16@0:8
+    • copy  enc: @16@0:8
+    • description  enc: @16@0:8
+    • isMuted  enc: B16@0:8
+    • mutableCopy  enc: @16@0:8
+    • hash  enc: q16@0:8
+    • isEqual:  enc: B24@0:8@16
+    • playbackRate  enc: d16@0:8
+    • mutableCopyWithZone:  enc: @24@0:8^v16
+    • .cxx_destruct  enc: v16@0:8
+    • initWithCoder:  enc: @24@0:8@16
+    • debugDescription  enc: @16@0:8
+    • init  enc: @16@0:8
+    • copyWithZone:  enc: @24@0:8^v16
+    • requiresLinearPlayback  enc: B16@0:8
+    • prerollAttributes  enc: @16@0:8
+  Properties (11):
+    • hash
+    • description
+    • debugDescription
+    • contentDuration
+    • contentType
+    • elapsedTime
+    • muted
+    • playbackRate
+    • prerollAttributes
+    • requiresLinearPlayback
+    • timeControlStatus
+
+Class: PIPMutablePlaybackState  super: PIPPlaybackState
+  Methods (13):
+    • contentType  enc: q16@0:8
+    • contentDuration  enc: d16@0:8
+    • setContentType:  enc: v24@0:8q16
+    • isMuted  enc: B16@0:8
+    • initWithCoder:  enc: @24@0:8@16
+    • init  enc: @16@0:8
+    • setMuted:  enc: v20@0:8B16
+    • setContentDuration:  enc: v24@0:8d16
+    • setPlaybackRate:elapsedTime:timeControlStatus:  enc: v40@0:8d16d24q32
+    • setPrerollAttributes:  enc: v24@0:8@16
+    • requiresLinearPlayback  enc: B16@0:8
+    • setRequiresLinearPlayback:  enc: v20@0:8B16
+    • prerollAttributes  enc: @16@0:8
+  Properties (5):
+    • contentDuration
+    • contentType
+    • muted
+    • prerollAttributes
+    • requiresLinearPlayback
+
+Class: PIPAgentProxy  super: NSObject
+  Methods (19):
+    • .cxx_destruct  enc: v16@0:8
+    • init  enc: @16@0:8
+    • agentClosePIP:completion:  enc: v28@0:8I16@?20
+    • agentCreatePIP:accessibilityToken:completion:  enc: v36@0:8I16@20@?28
+    • agentDragPIP:eventType:location:timestamp:completion:  enc: v56@0:8I16I20{CGPoint=dd}24Q40@?48
+    • agentHandshakeWithCompletion:  enc: v24@0:8@?16
+    • agentProcessIdentifier  enc: i16@0:8
+    • agentRestorePIP:toScreenRect:completion:  enc: v60@0:8I16{CGRect={CGPoint=dd}{CGSize=dd}}20@?52
+    • agentShowPIP:fromScreenRect:animating:withFence:completion:  enc: v72@0:8I16{CGRect={CGPoint=dd}{CGSize=dd}}20B52@56@?64
+    • agentUpdatePIP:controlStyle:delegateActions:playbackState:preferredMaximumSize:preferredMinimumSize:aspectRatio:completion:  enc: v100@0:8I16q20Q28@36{CGSize=dd}44{CGSize=dd}60{CGSize=dd}76@?92
+    • client:error:  enc: @28@0:8I16^@20
+    • clientPIP:action:  enc: v28@0:8I16q20
+    • clientPIP:setMicrophoneMuted:  enc: v24@0:8I16B20
+    • clientPIP:setPlaying:  enc: v24@0:8I16B20
+    • clientPIP:setWindowContentRect:completion:  enc: v60@0:8I16{CGRect={CGPoint=dd}{CGSize=dd}}20@?52
+    • clientPIP:skipInterval:  enc: v28@0:8I16d20
+    • clientPIP:willCloseWithCompletion:  enc: v28@0:8I16@?20
+    • registerPIPViewController:withContextId:  enc: v28@0:8@16I24
+    • unregisterPIPViewControllerWithContextId:  enc: v20@0:8I16
+  Properties (1):
+    • agentProcessIdentifier
+
+Class: PIPosterLayoutHelper  super: PFParallaxLayoutHelper
+  Methods (9):
+    • .cxx_destruct  enc: v16@0:8
+    • initWithPosterClassification:initialRect:imageSize:effectiveAcceptableRect:effectivePreferredRect:validBoundsNormalized:headroomFeasible:hasTopEdgeContact:computeSpatial:spatialPadding:layoutType:allowedLayoutStrategies:layoutConfiguration:  enc: @212@0:8Q16{CGRect={CGPoint=dd}{CGSize=dd}}24{CGSize=dd}56{CGRect={CGPoint=dd}{CGSize=dd}}72{CGRect={CGPoint=dd}{CGSize=dd}}104{CGRect={CGPoint=dd}{CGSize=dd}}136B168B172B176d180Q188Q196@204
+    • intermediateWithInactiveStrategy:intermediate:  enc: @32@0:8Q16@24
+    • intermediateWithOverlapStrategy:intermediate:  enc: @32@0:8Q16@24
+    • intermediateWithZoomStrategy:intermediate:  enc: @32@0:8Q16@24
+    • scoreIntermediate:  enc: @24@0:8@16
+    • centerLayoutHorizontalTarget  enc: d16@0:8
+    • initWithCIContext:matte:posterClassification:initialRect:imageSize:effectiveAcceptableRect:effectivePreferredRect:validBoundsNormalized:headroomFeasible:hasTopEdgeContact:shouldConstrainLayoutToBounds:computeSpatial:spatialPadding:layoutType:allowedLayoutStrategies:layoutConfiguration:  enc: @232@0:8@16@24Q32{CGRect={CGPoint=dd}{CGSize=dd}}40{CGSize=dd}72{CGRect={CGPoint=dd}{CGSize=dd}}88{CGRect={CGPoint=dd}{CGSize=dd}}120{CGRect={CGPoint=dd}{CGSize=dd}}152B184B188B192B196d200Q208Q216@224
+    • pixelBasedIntermediateWithOverlapStrategy:intermediate:translationY:  enc: @40@0:8Q16@24d32
+
+Class: PIPhotoGrainHDR  super: CIFilter
+  Methods (13):
+    • inputISO  enc: @16@0:8
+    • setInputAmount:  enc: v24@0:8@16
+    • setInputSeed:  enc: v24@0:8@16
+    • _grainBlendAndMixKernel  enc: @16@0:8
+    • _interpolateGrainKernel  enc: @16@0:8
+    • _paddedTileKernel  enc: @16@0:8
+    • outputImage  enc: @16@0:8
+    • setInputISO:  enc: v24@0:8@16
+    • .cxx_destruct  enc: v16@0:8
+    • inputAmount  enc: @16@0:8
+    • setInputImage:  enc: v24@0:8@16
+    • inputImage  enc: @16@0:8
+    • inputSeed  enc: @16@0:8
+  Properties (4):
+    • inputImage
+    • inputISO
+    • inputAmount
+    • inputSeed
+
+Class: PIPortraitDebugFilter  super: CIFilter
+  Methods (6):
+    • outputImage  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • setInputImage:  enc: v24@0:8@16
+    • inputImage  enc: @16@0:8
+    • depthInfo  enc: @16@0:8
+    • setDepthInfo:  enc: v24@0:8@16
+  Properties (2):
+    • inputImage
+    • depthInfo
+
+Class: PIPhotoEffect3DFilter  super: CIFilter
+  Methods (12):
+    • outputImage  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • setInputImage:  enc: v24@0:8@16
+    • inputImage  enc: @16@0:8
+    • inputBlurMap  enc: @16@0:8
+    • inputIntensity  enc: @16@0:8
+    • setInputBlurMap:  enc: v24@0:8@16
+    • setInputIntensity:  enc: v24@0:8@16
+    • inputIsHDR  enc: @16@0:8
+    • inputKind  enc: @16@0:8
+    • setInputIsHDR:  enc: v24@0:8@16
+    • setInputKind:  enc: v24@0:8@16
+  Properties (5):
+    • inputImage
+    • inputBlurMap
+    • inputKind
+    • inputIntensity
+    • inputIsHDR
+
+Class: PIPortraitEffectFilter  super: CIFilter
+  Methods (34):
+    • inputScale  enc: @16@0:8
+    • setInputScale:  enc: v24@0:8@16
+    • outputImage  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • setInputImage:  enc: v24@0:8@16
+    • inputImage  enc: @16@0:8
+    • inputBlurMap  enc: @16@0:8
+    • inputDepthMap  enc: @16@0:8
+    • inputStrength  enc: @16@0:8
+    • setInputBlurMap:  enc: v24@0:8@16
+    • setInputDepthMap:  enc: v24@0:8@16
+    • setInputStrength:  enc: v24@0:8@16
+    • inputMatte  enc: @16@0:8
+    • setInputMatte:  enc: v24@0:8@16
+    • inputDisparity  enc: @16@0:8
+    • inputFaceLandmarkArray  enc: @16@0:8
+    • inputFaceMask  enc: @16@0:8
+    • inputFullSizeImage  enc: @16@0:8
+    • inputGenerateSpillMatte  enc: @16@0:8
+    • inputHairMask  enc: @16@0:8
+    • inputKind  enc: @16@0:8
+    • inputOneShot  enc: @16@0:8
+    • inputTeethMask  enc: @16@0:8
+    • inputVersion  enc: @16@0:8
+    • setInputDisparity:  enc: v24@0:8@16
+    • setInputFaceLandmarkArray:  enc: v24@0:8@16
+    • setInputFaceMask:  enc: v24@0:8@16
+    • setInputFullSizeImage:  enc: v24@0:8@16
+    • setInputGenerateSpillMatte:  enc: v24@0:8@16
+    • setInputHairMask:  enc: v24@0:8@16
+    • setInputKind:  enc: v24@0:8@16
+    • setInputOneShot:  enc: v24@0:8@16
+    • setInputTeethMask:  enc: v24@0:8@16
+    • setInputVersion:  enc: v24@0:8@16
+  Properties (16):
+    • inputImage
+    • inputFullSizeImage
+    • inputDisparity
+    • inputMatte
+    • inputBlurMap
+    • inputFaceMask
+    • inputHairMask
+    • inputTeethMask
+    • inputDepthMap
+    • inputKind
+    • inputVersion
+    • inputFaceLandmarkArray
+    • inputScale
+    • inputGenerateSpillMatte
+    • inputStrength
+    • inputOneShot
+
+Class: PIPortraitHeadroomFilter  super: CIFilter
+  Methods (20):
+    • hdrGainMap  enc: @16@0:8
+    • setClassification:  enc: v24@0:8Q16
+    • outputImage  enc: @16@0:8
+    • classification  enc: Q16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • setInputImage:  enc: v24@0:8@16
+    • inputImage  enc: @16@0:8
+    • isInactive  enc: B16@0:8
+    • setRenderScale:  enc: v24@0:8d16
+    • renderScale  enc: d16@0:8
+    • setIsInactive:  enc: v20@0:8B16
+    • setSkipInpaint:  enc: v20@0:8B16
+    • colorAnalysisOnly  enc: B16@0:8
+    • extendedRect  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • matteImage  enc: @16@0:8
+    • setColorAnalysisOnly:  enc: v20@0:8B16
+    • setExtendedRect:  enc: v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16
+    • setHdrGainMap:  enc: v24@0:8@16
+    • setMatteImage:  enc: v24@0:8@16
+    • skipInpaint  enc: B16@0:8
+  Properties (9):
+    • inputImage
+    • matteImage
+    • hdrGainMap
+    • extendedRect
+    • isInactive
+    • colorAnalysisOnly
+    • skipInpaint
+    • renderScale
+    • classification
+
+Class: PIPhotoGrain  super: CIFilter
+  Methods (10):
+    • setInputAmount:  enc: v24@0:8@16
+    • outputImage  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • inputAmount  enc: @16@0:8
+    • setInputImage:  enc: v24@0:8@16
+    • inputImage  enc: @16@0:8
+    • inputLevel  enc: @16@0:8
+    • inputPhase  enc: @16@0:8
+    • setInputLevel:  enc: v24@0:8@16
+    • setInputPhase:  enc: v24@0:8@16
+  Properties (4):
+    • inputImage
+    • inputLevel
+    • inputAmount
+    • inputPhase
+
+Class: PIParallaxFilter  super: CIFilter
+  Methods (21):
+    • visibleFrame  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • setCache:  enc: v24@0:8@16
+    • cache  enc: @16@0:8
+    • setVisibleFrame:  enc: v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16
+    • setInputBackgroundImage:  enc: v24@0:8@16
+    • outputImage  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • inputBackgroundImage  enc: @16@0:8
+    • inputGuideImage  enc: @16@0:8
+    • inputMatteImage  enc: @16@0:8
+    • setInputGuideImage:  enc: v24@0:8@16
+    • setInputMatteImage:  enc: v24@0:8@16
+    • setRenderScale:  enc: v24@0:8d16
+    • renderScale  enc: d16@0:8
+    • inputForegroundImage  enc: @16@0:8
+    • localLightData  enc: @16@0:8
+    • outputBackgroundImage  enc: @16@0:8
+    • outputForegroundImage  enc: @16@0:8
+    • outputMatteImage  enc: @16@0:8
+    • setInputForegroundImage:  enc: v24@0:8@16
+    • setLocalLightData:  enc: v24@0:8@16
+  Properties (11):
+    • visibleFrame
+    • renderScale
+    • localLightData
+    • cache
+    • inputForegroundImage
+    • inputBackgroundImage
+    • inputMatteImage
+    • inputGuideImage
+    • outputForegroundImage
+    • outputBackgroundImage
+    • outputMatteImage
+
+Class: PIParallaxRecipeFilter  super: PIParallaxFilter
+  Methods (11):
+    • setRecipe:  enc: v24@0:8@16
+    • setParameters:  enc: v24@0:8@16
+    • parameters  enc: @16@0:8
+    • initWithRecipe:  enc: @24@0:8@16
+    • .cxx_destruct  enc: v16@0:8
+    • recipe  enc: @16@0:8
+    • resolvedParameters  enc: @16@0:8
+    • _evaluateImageWithFilterDefinitions:inputImage:  enc: @32@0:8@16@24
+    • outputBackgroundImage  enc: @16@0:8
+    • outputForegroundImage  enc: @16@0:8
+    • outputMatteImage  enc: @16@0:8
+  Properties (3):
+    • recipe
+    • parameters
+    • resolvedParameters
+
+Class: PIPortraitVideoFilter  super: CIFilter
+  Methods (24):
+    • outputImage  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • setInputImage:  enc: v24@0:8@16
+    • inputImage  enc: @16@0:8
+    • inputAperture  enc: @16@0:8
+    • inputDisparityImage  enc: @16@0:8
+    • setInputAperture:  enc: v24@0:8@16
+    • setInputDisparityImage:  enc: v24@0:8@16
+    • setInputTimedRenderingMetadata:  enc: v24@0:8@16
+    • inputColorPixelBuffer  enc: @16@0:8
+    • inputDisparityPixelBuffer  enc: @16@0:8
+    • inputFocusedDisparity  enc: @16@0:8
+    • inputGlobalRenderingMetadata  enc: @16@0:8
+    • inputIsHDR  enc: B16@0:8
+    • inputRenderDebugMode  enc: @16@0:8
+    • inputRenderQuality  enc: @16@0:8
+    • inputTimedRenderingMetadata  enc: @16@0:8
+    • setInputColorPixelBuffer:  enc: v24@0:8@16
+    • setInputDisparityPixelBuffer:  enc: v24@0:8@16
+    • setInputFocusedDisparity:  enc: v24@0:8@16
+    • setInputGlobalRenderingMetadata:  enc: v24@0:8@16
+    • setInputIsHDR:  enc: v20@0:8B16
+    • setInputRenderDebugMode:  enc: v24@0:8@16
+    • setInputRenderQuality:  enc: v24@0:8@16
+  Properties (11):
+    • inputImage
+    • inputDisparityImage
+    • inputColorPixelBuffer
+    • inputDisparityPixelBuffer
+    • inputRenderQuality
+    • inputRenderDebugMode
+    • inputIsHDR
+    • inputGlobalRenderingMetadata
+    • inputTimedRenderingMetadata
+    • inputAperture
+    • inputFocusedDisparity
+
+Class: PIPhotoEffectHDR  super: CIFilter
+  Methods (8):
+    • outputImage  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • setInputImage:  enc: v24@0:8@16
+    • inputImage  enc: @16@0:8
+    • isBlackAndWhite  enc: B16@0:8
+    • hdrOffsetKernel  enc: @16@0:8
+    • photoEffectName  enc: @16@0:8
+    • configureFilter:  enc: v24@0:8@16
+  Properties (2):
+    • isBlackAndWhite
+    • inputImage
+
+Class: PIPhotoEffect3DHDR  super: PIPhotoEffectHDR
+  Methods (6):
+    • .cxx_destruct  enc: v16@0:8
+    • inputDepthMap  enc: @16@0:8
+    • inputThreshold  enc: f16@0:8
+    • setInputDepthMap:  enc: v24@0:8@16
+    • setInputThreshold:  enc: v20@0:8f16
+    • configureFilter:  enc: v24@0:8@16
+  Properties (2):
+    • inputDepthMap
+    • inputThreshold
+
+Class: PIPhotoEffect3DDramaticWarmHDR  super: PIPhotoEffect3DHDR
+
+Class: PIPhotoEffect3DDramaticCoolHDR  super: PIPhotoEffect3DHDR
+
+Class: PIPhotoEffect3DDramaticHDR  super: PIPhotoEffect3DHDR
+
+Class: PIPhotoEffect3DVividCoolHDR  super: PIPhotoEffect3DHDR
+
+Class: PIPhotoEffect3DVividWarmHDR  super: PIPhotoEffect3DHDR
+
+Class: PIPhotoEffect3DVividHDR  super: PIPhotoEffect3DHDR
+
+Class: PIPhotoEffect3DBlackAndWhiteHDR  super: PIPhotoEffect3DHDR
+  Methods (1):
+    • isBlackAndWhite  enc: B16@0:8
+
+Class: PIPhotoEffect3DNoirHDR  super: PIPhotoEffect3DBlackAndWhiteHDR
+
+Class: PIPhotoEffect3DSilverplateHDR  super: PIPhotoEffect3DBlackAndWhiteHDR
+
+Class: PIPhotoEffectTransferHDR  super: PIPhotoEffectHDR
+
+Class: PIPhotoEffectProcessHDR  super: PIPhotoEffectHDR
+
+Class: PIPhotoEffectInstantHDR  super: PIPhotoEffectHDR
+
+Class: PIPhotoEffectFadeHDR  super: PIPhotoEffectHDR
+
+Class: PIPhotoEffectChromeHDR  super: PIPhotoEffectHDR
+
+Class: PIPhotoEffectBlackAndWhiteHDR  super: PIPhotoEffectHDR
+  Methods (1):
+    • isBlackAndWhite  enc: B16@0:8
+
+Class: PIPhotoEffectStageMonoHDR  super: PIPhotoEffectBlackAndWhiteHDR
+
+Class: PIPhotoEffectTonalHDR  super: PIPhotoEffectBlackAndWhiteHDR
+
+Class: PIPhotoEffectMonoHDR  super: PIPhotoEffectBlackAndWhiteHDR
+
+Class: PIPhotoEffectNoirHDR  super: PIPhotoEffectBlackAndWhiteHDR
+
+Class: PIPFenceHandle  super: CAFenceHandle
+  Methods (1):
+    • initWithCoder:  enc: @24@0:8@16
+
+Class: PIPPanel  super: NSPanel
+  Methods (3):
+    • mouseDown:  enc: v24@0:8@16
+    • initWithContentRect:  enc: @48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16
+    • performWindowDragWithEvent:  enc: v24@0:8@16
+
+Class: PIPViewController  super: NSViewController
+  Methods (71):
+    • minSize  enc: {CGSize=dd}16@0:8
+    • setMaxSize:  enc: v32@0:8{CGSize=dd}16
+    • maxSize  enc: {CGSize=dd}16@0:8
+    • controls  enc: Q16@0:8
+    • setPlaying:  enc: v20@0:8B16
+    • playbackState  enc: @16@0:8
+    • setContext:  enc: v24@0:8@16
+    • context  enc: @16@0:8
+    • delegate  enc: @16@0:8
+    • setAspectRatio:  enc: v32@0:8{CGSize=dd}16
+    • setHeightConstraint:  enc: v24@0:8@16
+    • setMinSize:  enc: v32@0:8{CGSize=dd}16
+    • setDelegate:  enc: v24@0:8@16
+    • initWithNibName:bundle:  enc: @32@0:8@16@24
+    • loadView  enc: v16@0:8
+    • aspectRatio  enc: {CGSize=dd}16@0:8
+    • setControls:  enc: v24@0:8Q16
+    • heightConstraint  enc: @16@0:8
+    • .cxx_destruct  enc: v16@0:8
+    • initWithCoder:  enc: @24@0:8@16
+    • playing  enc: B16@0:8
+    • dealloc  enc: v16@0:8
+    • init  enc: @16@0:8
+    • setMuted:  enc: v20@0:8B16
+    • setRepresentedObject:  enc: v24@0:8@16
+    • preferredMaximumSize  enc: {CGSize=dd}16@0:8
+    • preferredMinimumSize  enc: {CGSize=dd}16@0:8
+    • nibName  enc: @16@0:8
+    • widthConstraint  enc: @16@0:8
+    • animateDismissalOfViewController:fromViewController:  enc: v32@0:8@16@24
+    • animatePresentationOfViewController:fromViewController:  enc: v32@0:8@16@24
+    • nibBundle  enc: @16@0:8
+    • panel  enc: @16@0:8
+    • performWindowDragWithEvent:  enc: v24@0:8@16
+    • representedObject  enc: @16@0:8
+    • setAccessibilityElement:  enc: v24@0:8@16
+    • setPanel:  enc: v24@0:8@16
+    • setWidthConstraint:  enc: v24@0:8@16
+    • accessibilityElement  enc: @16@0:8
+    • muted  enc: B16@0:8
+    • presentViewControllerAsPictureInPicture:  enc: v24@0:8@16
+    • setReplacementRect:  enc: v48@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16
+    • setReplacementWindow:  enc: v24@0:8@16
+    • setUserCanResize:  enc: v20@0:8B16
+    • updatePlaybackStateUsingBlock:  enc: v24@0:8@?16
+    • controlStyle  enc: q16@0:8
+    • dismissPictureInPictureByRestoringToRect:inWindow:completionHandler:  enc: v64@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16@48@?56
+    • dismissPictureInPictureWithCompletionHandler:  enc: v24@0:8@?16
+    • presentViewControllerAsPictureInPicture:completionHandler:  enc: v32@0:8@16@?24
+    • setControlStyle:  enc: v24@0:8q16
+    • replacementView  enc: @16@0:8
+    • replacementRect  enc: {CGRect={CGPoint=dd}{CGSize=dd}}16@0:8
+    • _pipAction:  enc: v24@0:8q16
+    • _pipActionSetMicrophoneMuted:  enc: v20@0:8B16
+    • _pipActionSetPlaying:  enc: v20@0:8B16
+    • _pipActionSkipInterval:  enc: v24@0:8d16
+    • _pipActionSkipToLive  enc: v16@0:8
+    • _pipSetWindowContentRect:completion:  enc: v56@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16@?48
+    • _pipWillCloseWithCompletion:  enc: v24@0:8@?16
+    • _setPlaybackState:  enc: v24@0:8@16
+    • activeFenceHandle  enc: @16@0:8
+    • copyActiveFencePort  enc: I16@0:8
+    • customControlsViewController  enc: @16@0:8
+    • dismissPictureInPictureByRestoringToView:completionHandler:  enc: v32@0:8@16@?24
+    • dismissViewControllerWithFlyback:  enc: v24@0:8@16
+    • replacementWindow  enc: @16@0:8
+    • setCustomControlsViewController:  enc: v24@0:8@16
+    • setPreferredMaximumSize:  enc: v32@0:8{CGSize=dd}16
+    • setPreferredMinimumSize:  enc: v32@0:8{CGSize=dd}16
+    • setReplacementView:  enc: v24@0:8@16
+    • userCanResize  enc: B16@0:8
+  Properties (18):
+    • playbackState
+    • customControlsViewController
+    • panel
+    • context
+    • accessibilityElement
+    • heightConstraint
+    • widthConstraint
+    • replacementWindow
+    • replacementRect
+    • delegate
+    • controlStyle
+    • preferredMaximumSize
+    • preferredMinimumSize
+    • aspectRatio
+    • hash
+    • superclass
+    • description
+    • debugDescription
+

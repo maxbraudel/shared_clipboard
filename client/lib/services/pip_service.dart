@@ -31,4 +31,13 @@ class PipService {
       print('PIP: Error updating PiP progress: $e');
     }
   }
+
+  Future<void> updateFileName(String name) async {
+    try {
+      // Do not spam logs; just send the update
+      await _channel.invokeMethod('updatePipFileName', {'name': name});
+    } catch (e) {
+      print('PIP: Error updating PiP file name: $e');
+    }
+  }
 }

@@ -200,6 +200,8 @@ class _HomePageState extends State<HomePage> {
         } else {
           print('HOME: 📊 Updating PiP progress to ${(progress * 100).toInt()}%');
         }
+        // Always inform PiP of the current file name so it shows under the title
+        _pipService.updateFileName(fileName);
         _pipService.updateProgress(progress);
       } else {
         print('HOME: ❌ Not macOS, skipping PiP');
