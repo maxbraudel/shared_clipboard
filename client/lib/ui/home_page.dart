@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io' show Platform;
+import 'package:shared_clipboard/services/settings_service.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'dart:async';
 import 'package:shared_clipboard/services/socket_service.dart';
@@ -190,19 +191,23 @@ class _HomePageState extends State<HomePage> {
     
     // Set up callback for download progress updates
     _webrtcService.onDownloadProgress = (String fileName, double progress) {
-      _logger.i('Download progress callback: $fileName at ${(progress * 100).toInt()}%');
+      final pct = (progress * 100.0);
+      _logger.i('Download progress callback: $fileName at ${pct.toStringAsFixed(1)}%');
       // macOS: start PiP at beginning and update progress continuously
       if (Platform.isMacOS) {
-        print('HOME: 🖥️ macOS detected, handling PiP for progress: ${(progress * 100).toInt()}%');
-        if (progress <= 0.0) {
-          print('HOME: 🚀 Starting PiP (progress <= 0)');
-          _pipService.start();
-        } else {
-          print('HOME: 📊 Updating PiP progress to ${(progress * 100).toInt()}%');
+        final settings = SettingsService.instance;
+        if (settings.displayDownloadProgressIndicator) {
+          print('HOME: 🖥️ macOS detected, handling PiP for progress: ${pct.toStringAsFixed(1)}%');
+          if (progress <= 0.0) {
+            print('HOME: 🚀 Starting PiP (progress <= 0)');
+            _pipService.start();
+          } else {
+            print('HOME: 📊 Updating PiP progress to ${pct.toStringAsFixed(1)}%');
+          }
+          // Always inform PiP of the current file name so it shows under the title
+          _pipService.updateFileName(fileName);
+          _pipService.updateProgress(progress);
         }
-        // Always inform PiP of the current file name so it shows under the title
-        _pipService.updateFileName(fileName);
-        _pipService.updateProgress(progress);
       } else {
         print('HOME: ❌ Not macOS, skipping PiP');
       }

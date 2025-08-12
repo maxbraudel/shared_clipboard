@@ -4,6 +4,8 @@ import 'package:shared_clipboard/services/tray_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
 import 'package:shared_clipboard/core/constants.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:shared_clipboard/services/settings_service.dart';
+import 'package:shared_clipboard/core/navigation.dart';
 import 'dart:io' show Platform;
 
 void main() async {
@@ -39,6 +41,9 @@ void main() async {
   
   // Initialize notification service
   await NotificationService().init();
+
+  // Initialize settings service (persistent settings)
+  await SettingsService.instance.init();
   
   // Run the app
   runApp(const BackgroundApp());
@@ -81,6 +86,7 @@ class _BackgroundAppState extends State<BackgroundApp> with WindowListener {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
+      navigatorKey: navigatorKey,
       home: const HomePage(),
       debugShowCheckedModeBanner: false,
     );

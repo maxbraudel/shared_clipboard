@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_clipboard/services/file_transfer_service.dart';
 import 'package:shared_clipboard/services/notification_service.dart';
+import 'package:shared_clipboard/services/settings_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_clipboard/core/logger.dart';
 import 'package:window_manager/window_manager.dart';
@@ -1113,21 +1114,13 @@ class WebRTCService {
           onWaitingForUserLocation!(name);
         }
         
-        // Ensure window stays visible during and after file picker
+        // Open file picker for save location (do not force-show main window afterward)
         String? savePath;
         try {
           savePath = await FilePicker.platform.saveFile(
             dialogTitle: 'Save incoming file',
             fileName: name,
           );
-          
-          // Re-show window after file picker closes (in case it was hidden by macOS)
-          try {
-            await windowManager.show();
-            await windowManager.focus();
-          } catch (e) {
-            _log('⚠️ Could not restore window focus after file picker: $e');
-          }
         } catch (e) {
           _log('❌ Error opening file picker: $e');
           savePath = null;
@@ -1170,9 +1163,11 @@ class WebRTCService {
         'files': session.files.length
       });
       
-      // Show 0% download notification for each file at the start
+      // Optionally show 0% download notification for each file at the start
       for (final fileInfo in incomingFiles) {
-        _notificationService.showFileDownloadProgress(0, fileInfo.name);
+        if (SettingsService.instance.sendDownloadProgressNotifications) {
+          _notificationService.showFileDownloadProgress(0, fileInfo.name);
+        }
         // Don't set lastNotificationTime here - let the first progress notification show immediately
         
         // Notify UI about download start
@@ -1207,30 +1202,39 @@ class WebRTCService {
       final incoming = session.files[fileIndex];
       incoming.sink.add(bytes);
       incoming.received += bytes.length;
+
+      // Compute normalized progress [0.0, 1.0]
+      final double progress = incoming.size > 0
+          ? incoming.received / incoming.size
+          : 0.0;
+
+      // Log every data message progress for debugging
+      _log('⬇️ PROGRESS', {
+        'file': incoming.name,
+        'received': incoming.received,
+        'of': incoming.size
+      });
+
+      // Always notify UI about progress updates (on every chunk, not throttled)
+      if (onDownloadProgress != null) {
+        onDownloadProgress!(incoming.name, progress);
+      }
+
+      // Throttle system notifications: show only at 10% steps and at most every 10s
+      final int progressInt = (progress * 100).floor();
       final receivedMB = incoming.received / (1024 * 1024);
       if (receivedMB.toInt() > (incoming.lastReportedMB ?? -1)) {
-        final progressInt = (incoming.received / incoming.size * 100).round();
-        _log('⬇️ PROGRESS', {'file': incoming.name, 'received': incoming.received, 'of': incoming.size});
         incoming.lastReportedMB = receivedMB.toInt();
-        
-        // Show download progress notification with throttling (minimum 10s apart)
         final now = DateTime.now();
-        final shouldShowNotification = incoming.lastNotificationTime == null || 
+        final shouldShowNotification = incoming.lastNotificationTime == null ||
             now.difference(incoming.lastNotificationTime!).inSeconds >= 10;
-        
         if (shouldShowNotification) {
-          // Check if this percentage should actually be shown (10%, 20%, 30%... 90%)
-          // Exclude 0% since it's already shown at download start
           if (progressInt % 10 == 0 && progressInt > 0 && progressInt < 100) {
-            _notificationService.showFileDownloadProgress(progressInt, incoming.name);
-            // Only update the timer when we actually display a notification
-            incoming.lastNotificationTime = now;
+            if (SettingsService.instance.sendDownloadProgressNotifications) {
+              _notificationService.showFileDownloadProgress(progressInt, incoming.name);
+              incoming.lastNotificationTime = now;
+            }
           }
-        }
-        
-        // Always notify UI about progress updates (not throttled like notifications)
-        if (onDownloadProgress != null) {
-          onDownloadProgress!(incoming.name, progressInt.toDouble());
         }
       }
 
@@ -1315,9 +1319,11 @@ class WebRTCService {
       await _fileTransferService.setClipboardContent(ClipboardContent.files(filesForClipboard));
       _log('🎉 FILE SESSION FINALIZED', {'sessionId': sessionId, 'files': filesForClipboard.length, 'verified': allOk});
       
-      // Show download completion notifications for each file
-      for (final f in session.files) {
-        _notificationService.showFileDownloadComplete(f.name);
+      // Optionally show download completion notifications for each file
+      if (SettingsService.instance.sendDownloadProgressNotifications) {
+        for (final f in session.files) {
+          _notificationService.showFileDownloadComplete(f.name);
+        }
       }
       
       // Notify UI about received files for Last Retrieved Clipboard section

@@ -24,6 +24,7 @@ dependencies:
   windows_notification: ^1.1.0
   flutter_local_notifications: ^17.2.2
   ffi: ^2.1.0
+  shared_preferences: ^2.2.2
 
 
 dev_dependencies:

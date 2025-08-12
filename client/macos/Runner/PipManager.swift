@@ -13,7 +13,8 @@ class PipManager: NSObject {
     
     private var pipController: AVPictureInPictureController?
     private var sampleBufferDisplayLayer: AVSampleBufferDisplayLayer?
-    private var currentProgress: Double = 0.0
+    // Normalized progress in [0.0, 1.0]
+    private var currentProgressNormalized: Double = 0.0
     private var currentFileName: String? = nil
     private var displayTimer: Timer?
 
@@ -153,7 +154,7 @@ class PipManager: NSObject {
             NSColor.controlBackgroundColor.withAlphaComponent(0.85).setFill()
             trackPath.fill()
 
-            // Fill (no corner radius). Clip to the rounded track to avoid spillover on corners.
+            // Fill (square-ended)
             let clamped = CGFloat(max(0.0, min(1.0, progress)))
             let fillRect = NSRect(x: barRect.minX, y: barRect.minY, width: barRect.width * clamped, height: barRect.height)
             NSColor.controlAccentColor.setFill()
@@ -162,9 +163,9 @@ class PipManager: NSObject {
             NSBezierPath(rect: fillRect).fill()
             NSGraphicsContext.restoreGraphicsState()
 
-            // Percentage label above the bar
-            let percent = Int(round(progress * 100))
-            let percentText = "\(percent)%"
+            // Percentage label above the bar (with decimals)
+            let percentValue = progress * 100.0
+            let percentText = String(format: "%.1f%%", percentValue)
             let percentAttrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: max(11, min(16, bounds.height * 0.12)), weight: .medium),
                 .foregroundColor: NSColor.secondaryLabelColor
@@ -198,8 +199,8 @@ class PipManager: NSObject {
              container.translatesAutoresizingMaskIntoConstraints = false
 
              let progress = ProgressView(frame: container.bounds)
-             // Initialize with current progress (normalize 0–100 to 0–1)
-             progress.progress = max(0.0, min(1.0, currentProgress / 100.0))
+             // Initialize with current progress (already normalized 0–1)
+             progress.progress = max(0.0, min(1.0, currentProgressNormalized))
              // Initialize with current file name if available
              if let name = currentFileName {
                  progress.fileName = (name as NSString).lastPathComponent
@@ -480,19 +481,26 @@ class PipManager: NSObject {
         context.setFillColor(CGColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 0.9))
         context.fill(rect)
         
-        // Draw progress bar background
+        // Draw progress bar background (rounded track)
         let barRect = CGRect(x: 20, y: height/2 - 10, width: width - 40, height: 20)
+        let corner = barRect.height / 2
+        let trackPath = CGPath(roundedRect: barRect, cornerWidth: corner, cornerHeight: corner, transform: nil)
         context.setFillColor(CGColor(red: 0.3, green: 0.3, blue: 0.3, alpha: 1.0))
-        context.fillEllipse(in: barRect)
+        context.addPath(trackPath)
+        context.fillPath()
         
-        // Draw progress bar fill
-        let fillWidth = Double(barRect.width) * (currentProgress / 100.0)
-        let fillRect = CGRect(x: barRect.minX, y: barRect.minY, width: fillWidth, height: barRect.height)
+        // Draw progress bar fill (square ends, clipped to rounded track)
+        let clamped = max(0.0, min(1.0, currentProgressNormalized))
+        let fillRect = CGRect(x: barRect.minX, y: barRect.minY, width: CGFloat(barRect.width) * CGFloat(clamped), height: barRect.height)
+        context.saveGState()
+        context.addPath(trackPath)
+        context.clip()
         context.setFillColor(CGColor(red: 0.0, green: 0.5, blue: 1.0, alpha: 1.0))
-        context.fillEllipse(in: fillRect)
+        context.fill(fillRect)
+        context.restoreGState()
         
-        // Draw percentage text
-        let percentText = String(format: "%.0f%%", currentProgress)
+        // Draw percentage text (with decimals)
+        let percentText = String(format: "%.1f%%", currentProgressNormalized * 100.0)
         context.setFillColor(CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0))
         context.textMatrix = CGAffineTransform.identity
         
@@ -603,12 +611,13 @@ class PipManager: NSObject {
     }
     
     func updateProgress(_ progress: Double) {
-        if PipLoggingEnabled { print("📊 PipManager: Updating progress to \(progress)%") }
-        currentProgress = progress
+        // progress: normalized [0.0, 1.0]
+        if PipLoggingEnabled { print("📊 PipManager: Updating normalized progress to \(progress)") }
+        let normalized = max(0.0, min(1.0, progress))
+        currentProgressNormalized = normalized
         
         // Update custom PiP view immediately (on main thread)
         if privateFrameworkLoaded, let view = privateProgressView {
-            let normalized = max(0.0, min(1.0, progress / 100.0))
             DispatchQueue.main.async {
                 view.progress = normalized
             }
